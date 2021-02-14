@@ -26,14 +26,15 @@ data HExp a where
         -> HExp a
 
     HMerge :: (Show a, Show b, Partable f a)
-        => HExp a             -- ^ Scrutinee
+        => HExp a           -- ^ Scrutinee
         -> [(f a, HExp b)]  -- ^ Matches (pattern -> body)
         -> HExp b
 
--- deriving instance Show a => Show (HExp a)
+deriving instance Show a => Show (HExp a)
 
-
+--
 -- * Combinators
+--
 
 -- | Lift a value into an expression.
 hval :: a -> HExp a
@@ -60,11 +61,10 @@ hmatch ::
     , Show b
     -- Scrutinee must be representable as a finite/enumerable type.
     , Partable f a
-    , Num a  -- Temporary constraint
     )
-    => HExp a        -- ^ Scrutinee
+    => HExp a           -- ^ Scrutinee
     -> (f a -> HExp b)  -- ^ Matching function
-    -> HExp b        -- ^ Return an HMerge
+    -> HExp b           -- ^ Return an HMerge
 hmatch e f = hmerge e branches
   where
     pats :: [f a]
@@ -91,29 +91,42 @@ next = \case
 
     HMerge e branches -> undefined
 
--- What does "Num a" do here? Does it do anything?
+--
+-- * Patterns
+--
+
+-- | Class for types which can be partitioned into a bounded/enumerable type.
+class (Bounded (f a), Enum (f a), Show (f a)) => Partable f a where
+    part :: a -> f a
+
 -- Consider rewriting as an GADT?
 data Num a => PatSign a = Pos | Zero | Neg
     deriving (Bounded, Enum, Show)
 
--- | Class for types which can be partitioned into a bounded/enumerable type.
-class (Bounded (f a), Enum (f a)) => Partable f a where
-    part :: a -> f a
-
-instance Partable PatSign Float where
-    part :: Float -> PatSign Float
+instance (Ord a, Num a) => Partable PatSign a where
+    part :: a -> PatSign a
     part x
         | x > 0     = Pos
         | x < 0     = Neg
         | otherwise = Zero
 
+data Num a => PatParity a = Even | Odd
+    deriving (Bounded, Enum, Show)
+
+instance Integral a => Partable PatParity a where
+    part :: a -> PatParity a
+    part x = if even x then Even else Odd
+
+--
+-- * Misc
+--
+
 -- Test program
-tp :: Float -> HExp String
+tp :: Float -> HExp Int
 tp x = hval x `hmatch` inspect
   where
-    inspect :: PatSign Float -> HExp String
+    inspect :: PatSign Float -> HExp Int
     inspect pf = hval $ case pf of
-        Pos  -> "Positive!"
-        Neg  -> "Negative!"
-        Zero -> "Zero!"
-
+        Pos  -> 1
+        Neg  -> -1
+        Zero -> 0
