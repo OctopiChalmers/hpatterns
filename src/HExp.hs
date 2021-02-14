@@ -1,4 +1,5 @@
 {-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE InstanceSigs          #-}
 {-# LANGUAGE KindSignatures        #-}
@@ -24,8 +25,10 @@ data HExp a where
         -> HExp a       -- ^ Default value if condition is false
         -> HExp a
 
-    HMerge :: (Show a, Show b) =>
-        HExp a -> [(a, HExp b)] -> HExp b
+    HMerge :: (Show a, Show b, Num a)
+        => HExp a             -- ^ Scrutinee
+        -> [(Pat a, HExp b)]  -- ^ Matches (pattern -> body)
+        -> HExp b
 
 deriving instance Show a => Show (HExp a)
 
@@ -48,24 +51,33 @@ hwhen = HWhen
 {- | Representation of a case-of expression. Scrutinee is of type 'a', return
 value is of type 'b'.
 -}
-hmerge :: (Show a, Show b) => HExp a -> [(a, HExp b)] -> HExp b
+hmerge :: (Show a, Show b, Num a) => HExp a -> [(Pat a, HExp b)] -> HExp b
 hmerge = HMerge
 
 hmatch ::
     forall a b .
     ( Show a
     , Show b
+    -- Scrutinee must be representable as a finite/enumerable type.
+    , Partable a Pat
+    , Num a  -- Temporary constraint
     )
     => HExp a        -- ^ Scrutinee
-    -> (Pat a -> b)  -- ^ Matching function
+    -> (Pat a -> HExp b)  -- ^ Matching function
     -> HExp b        -- ^ Return an HMerge
 hmatch e f = hmerge e branches
   where
+    pats :: [Pat a]
+    pats = [minBound ..]
+
+    bodies :: [HExp b]
+    bodies = map f pats
+
     scrut :: a
     scrut = next e
 
-    -- branches :: [(Pat a, HExp b)]
-    branches = undefined
+    branches :: [(Pat a, HExp b)]
+    branches = zip pats bodies
 
 -- Maybe this isn't really possible in Haski, with actual streams.
 next :: HExp a -> a
@@ -81,8 +93,8 @@ next = \case
 
 -- What does "Num a" do here? Does it do anything?
 -- Consider rewriting as an GADT?
-data Num a => Pat a = Pos | Neg
-    deriving (Bounded, Enum)
+data Num a => Pat a = Pos | Zero | Neg
+    deriving (Bounded, Enum, Show)
 
 -- | Class for types which can be partitioned into a bounded/enumerable type.
 class Partable a f where
@@ -91,5 +103,17 @@ class Partable a f where
 instance Partable Float Pat where
     part :: Float -> Pat Float
     part x
-        | x >= 0    = Pos  -- 0 is treated as positive for now
-        | otherwise = Neg
+        | x > 0     = Pos
+        | x < 0     = Neg
+        | otherwise = Zero
+
+-- Test program
+tp :: Float -> HExp String
+tp x = hval x `hmatch` inspect
+  where
+    inspect :: Pat Float -> HExp String
+    inspect pf = hval $ case pf of
+        Pos  -> "Positive!"
+        Neg  -> "Negative!"
+        Zero -> "Zero!"
+
