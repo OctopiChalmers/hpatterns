@@ -25,12 +25,12 @@ data HExp a where
         -> HExp a       -- ^ Default value if condition is false
         -> HExp a
 
-    HMerge :: (Show a, Show b, Num a)
+    HMerge :: (Show a, Show b, Partable f a)
         => HExp a             -- ^ Scrutinee
-        -> [(Pat a, HExp b)]  -- ^ Matches (pattern -> body)
+        -> [(f a, HExp b)]  -- ^ Matches (pattern -> body)
         -> HExp b
 
-deriving instance Show a => Show (HExp a)
+-- deriving instance Show a => Show (HExp a)
 
 
 -- * Combinators
@@ -51,23 +51,23 @@ hwhen = HWhen
 {- | Representation of a case-of expression. Scrutinee is of type 'a', return
 value is of type 'b'.
 -}
-hmerge :: (Show a, Show b, Num a) => HExp a -> [(Pat a, HExp b)] -> HExp b
+hmerge :: (Show a, Show b, Partable f a) => HExp a -> [(f a, HExp b)] -> HExp b
 hmerge = HMerge
 
 hmatch ::
-    forall a b .
+    forall a b f .
     ( Show a
     , Show b
     -- Scrutinee must be representable as a finite/enumerable type.
-    , Partable a Pat
+    , Partable f a
     , Num a  -- Temporary constraint
     )
     => HExp a        -- ^ Scrutinee
-    -> (Pat a -> HExp b)  -- ^ Matching function
+    -> (f a -> HExp b)  -- ^ Matching function
     -> HExp b        -- ^ Return an HMerge
 hmatch e f = hmerge e branches
   where
-    pats :: [Pat a]
+    pats :: [f a]
     pats = [minBound ..]
 
     bodies :: [HExp b]
@@ -76,10 +76,10 @@ hmatch e f = hmerge e branches
     scrut :: a
     scrut = next e
 
-    branches :: [(Pat a, HExp b)]
+    branches :: [(f a, HExp b)]
     branches = zip pats bodies
 
--- Maybe this isn't really possible in Haski, with actual streams.
+-- Maybe this isn't really possible in Haski, when using actual streams.
 next :: HExp a -> a
 next = \case
     HFby x e -> x
@@ -93,15 +93,15 @@ next = \case
 
 -- What does "Num a" do here? Does it do anything?
 -- Consider rewriting as an GADT?
-data Num a => Pat a = Pos | Zero | Neg
+data Num a => PatSign a = Pos | Zero | Neg
     deriving (Bounded, Enum, Show)
 
 -- | Class for types which can be partitioned into a bounded/enumerable type.
-class Partable a f where
-    part :: (Bounded (f a), Enum (f a)) => a -> f a
+class (Bounded (f a), Enum (f a)) => Partable f a where
+    part :: a -> f a
 
-instance Partable Float Pat where
-    part :: Float -> Pat Float
+instance Partable PatSign Float where
+    part :: Float -> PatSign Float
     part x
         | x > 0     = Pos
         | x < 0     = Neg
@@ -111,7 +111,7 @@ instance Partable Float Pat where
 tp :: Float -> HExp String
 tp x = hval x `hmatch` inspect
   where
-    inspect :: Pat Float -> HExp String
+    inspect :: PatSign Float -> HExp String
     inspect pf = hval $ case pf of
         Pos  -> "Positive!"
         Neg  -> "Negative!"
