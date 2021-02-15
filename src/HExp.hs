@@ -77,13 +77,19 @@ hmatch e f = hmerge e branches
 
     -- NOTE: We use 'next' here, but what would that look like in Haski?
     -- We don't have the "next" value then.
+    -- For now, say that the scrutinee MUST be an HVal or HFby
     scrut :: a
-    scrut = next e
+    -- scrut = next e
+    scrut = case e of
+        HVal v   -> v
+        HFby v _ -> v
+        c -> error $ "hmatch: Cannot match on constructor: " <> show c
 
     branches :: [(f a, HExp b)]
     branches = zip pats bodies
 
 -- Maybe this isn't really possible in Haski, when using actual streams.
+-- Trying to implement this function seems bad, semantics are very unclear.
 next :: HExp a -> a
 next = \case
     HFby x e -> x
@@ -122,7 +128,6 @@ instance Integral a => Partable PatParity a where
     part :: a -> PatParity a
     part x = if even x then Even else Odd
 
-
 data IsText a => PatAscii a = Ascii | Other
     deriving (Bounded, Enum, Show)
 
@@ -135,10 +140,25 @@ instance Partable PatAscii String where
     part :: String -> PatAscii String
     part xs = if all isAscii xs then Ascii else Other
 
-
 --
 -- * Misc
 --
+
+serialize :: Show a => HExp a -> String
+serialize = \case
+    HVal v -> show v
+
+    HFby v e -> "(" <> show v <> " fby " <> serialize e <> ")"
+
+    HMerge e branches -> "(merge " <> sBranches branches <> ")"
+
+    c -> error $ "serialize for `" <> show c <> "` not yet implemented"
+  where
+    sBranches :: (Show a, Show b) => [(a, HExp b)] -> String
+    sBranches = unwords . map sCase
+
+    sCase :: (Show a, Show b) => (a, HExp b) -> String
+    sCase (p, e) = "(" <> show p <> " -> " <> serialize e <> ")"
 
 -- Test program
 tp :: Float -> HExp Int
