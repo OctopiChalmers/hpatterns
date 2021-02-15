@@ -2,13 +2,15 @@
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE InstanceSigs          #-}
-{-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE StandaloneDeriving    #-}
+{-# LANGUAGE TypeFamilies          #-}
 
 module HExp where
+
+import Data.Char (isAscii)
 
 
 -- | Main data type.
@@ -73,6 +75,8 @@ hmatch e f = hmerge e branches
     bodies :: [HExp b]
     bodies = map f pats
 
+    -- NOTE: We use 'next' here, but what would that look like in Haski?
+    -- We don't have the "next" value then.
     scrut :: a
     scrut = next e
 
@@ -89,6 +93,7 @@ next = \case
         | next e2 == x -> next e1
         | otherwise -> next def
 
+    -- What should the behaviour be here?
     HMerge e branches -> undefined
 
 --
@@ -117,6 +122,20 @@ instance Integral a => Partable PatParity a where
     part :: a -> PatParity a
     part x = if even x then Even else Odd
 
+
+data IsText a => PatAscii a = Ascii | Other
+    deriving (Bounded, Enum, Show)
+
+-- Can we get this behaviour in some other way? I.e. "We can only instantiate
+-- PatAscii with String"
+class IsText a
+instance IsText String
+
+instance Partable PatAscii String where
+    part :: String -> PatAscii String
+    part xs = if all isAscii xs then Ascii else Other
+
+
 --
 -- * Misc
 --
@@ -130,3 +149,14 @@ tp x = hval x `hmatch` inspect
         Pos  -> 1
         Neg  -> -1
         Zero -> 0
+
+tp2 :: String -> String -> HExp Bool
+tp2 s1 s2 = hval $ case ( next $ hval s1 `hmatch` inspect
+                        , next $ hval s2 `hmatch` inspect
+                        ) of
+    (True, True) -> True
+    _            -> False
+  where
+    inspect s = hval $ case s of
+        Ascii -> True
+        Other -> False
