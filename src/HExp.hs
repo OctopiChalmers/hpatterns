@@ -2,20 +2,19 @@
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
-{-# LANGUAGE FunctionalDependencies #-}
 {-# LANGUAGE InstanceSigs           #-}
 {-# LANGUAGE LambdaCase             #-}
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE StandaloneDeriving     #-}
 {-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE TypeApplications       #-}
 
 module HExp where
 
 import Data.Char (isAscii)
 import Data.Functor.Identity (Identity (Identity))
 import Data.Int (Int8)
-import GHC.TypeLits
 
 import qualified Control.Monad.Trans.State as ST
 import qualified Data.Map as M
@@ -71,6 +70,77 @@ value is of type 'b'.
 hmerge :: (Show a, Show b) => HExp a -> [Match a b] -> HExp b
 hmerge = HMerge
 
+-- Maybe this isn't really possible in Haski, when using actual streams.
+-- Trying to implement this function seems bad, semantics are very unclear.
+next :: HExp a -> a
+next = \case
+    HFby x e -> x
+    HVal x   -> x
+
+    HWhen e1 (e2, x) def
+        | next e2 == x -> next e1
+        | otherwise -> next def
+
+    -- What should the behaviour be here?
+    HMerge e branches -> undefined
+
+--
+-- * Match representation
+--
+
+data Match a b where
+    -- Left side is the pattern, right side is the body that will be "run"
+    -- when the corresponding partition is matched. Seems more sensible
+    -- than ConsMatch
+    PartitionMatch :: Partable f x
+        => (f x, HExp y) -> Match x y
+
+    -- Left side is some constructor, right side can use HPVar to refer to
+    -- arguments. Basically, manually writing the representation of a case
+    -- match :( Possible to enforce something like "HPVar is only allowed"
+    -- inside a ConsMatch"? Some constraint on this constructor?
+    ConsMatch :: (x, HExp y) -> Match x y
+
+deriving instance (Show a, Show b) => Show (Match a b)
+
+class Matching a pat where
+    match :: (Show a, Show b) =>
+           HExp a           -- ^ Scrutinee
+        -> (pat -> HExp b)  -- ^ Case analysis function
+        -> HExp b           -- ^ Return an HMerge
+
+--          instance ConsType f => Matching a (f a) where
+-- How to work around this? ^ We want some 'match' behavior when f a
+-- is a constructor, and some other when it is a partition type. Maybe we
+-- need an actual type (with ConsType/Partable constraint), so that these
+-- instances work out.
+
+-- Also, how do we solve the very ugly thing we do with ConsType right now?
+-- Can't figure out a way to allow the user to write "normal" case-of
+-- expressions. Maybe have the user provide an additional list of
+-- patterns/constructors/whatever when calling 'match'? In that case,
+-- the function arity will differ depending on type... Type families?
+
+-- | Match instance for partition patterns.
+instance Partable f a => Matching a (f a) where
+    match :: forall b . (Show a, Show b) =>
+           HExp a
+        -> (f a -> HExp b)
+        -> HExp b
+    match e caseAnalyze = hmerge e matches
+      where
+        pats :: [f a]
+        pats = [minBound ..]
+
+        bodies :: [HExp b]
+        bodies = map caseAnalyze pats
+
+        matches :: [Match a b]
+        matches = zipWith (curry PartitionMatch) pats bodies
+
+--
+-- * Constructor patterns
+--
 
 newtype OutName = OutName String
 type Name = String
@@ -122,87 +192,8 @@ initEnv = Env
     , envSeed = 0
     }
 
-data Match a b where
-    PartitionMatch :: Partable f x
-        => (f x, HExp y) -> Match x y
-
-    -- Left side is some constructor, right side can use HPVar to refer to
-    -- arguments. Basically, manually writing the representation of a case
-    -- match :( Possible to enforce something like "HPVar is only allowed"
-    -- inside a ConsMatch"? Some constraint on this constructor?
-    ConsMatch :: (x, HExp y) -> Match x y
-
-deriving instance (Show a, Show b) => Show (Match a b)
-
--- class Matches a b where
---     toPat :: a -> Match a b
-
-class Matching a pat where
-    match :: (Show a, Show b) =>
-           HExp a           -- ^ Scrutinee
-        -> (pat -> HExp b)  -- ^ Case analysis function
-        -> HExp b           -- ^ Return an HMerge
-
--- | Match instance for partition patterns.
-instance Partable f a => Matching a (f a) where
-    match :: forall b . (Show a, Show b) =>
-           HExp a
-        -> (f a -> HExp b)
-        -> HExp b
-    match e caseAnalyze = hmerge e matches
-      where
-        pats :: [f a]
-        pats = [minBound ..]
-
-        bodies :: [HExp b]
-        bodies = map caseAnalyze pats
-
-        matches :: [Match a b]
-        matches = zipWith (curry PartitionMatch) pats bodies
-
-hmatch ::
-    forall a b f .
-    ( Show a
-    , Show b
-    -- Scrutinee must be representable as a finite/enumerable type.
-    , Partable f a
-    -- What we really want is:
-    -- - A partition type
-    -- - OR a variable (this one might not be necessary)
-    -- - OR a constructor (with variables as argmuents)
-    -- Maybe just using different hmatch functions is the easiest in that case
-    )
-    => HExp a           -- ^ Scrutinee
-    -> (f a -> HExp b)  -- ^ Matching function
-    -> HExp b           -- ^ Return an HMerge
--- hmatch e f = hmerge e branches
-hmatch e f = undefined
-  where
-    pats :: [f a]
-    pats = [minBound ..]
-
-    bodies :: [HExp b]
-    bodies = map f pats
-
-    branches :: [(f a, HExp b)]
-    branches = zip pats bodies
-
--- Maybe this isn't really possible in Haski, when using actual streams.
--- Trying to implement this function seems bad, semantics are very unclear.
-next :: HExp a -> a
-next = \case
-    HFby x e -> x
-    HVal x   -> x
-
-    HWhen e1 (e2, x) def
-        | next e2 == x -> next e1
-        | otherwise -> next def
-
-    -- What should the behaviour be here?
-    HMerge e branches -> undefined
-
 --
--- * Patterns
+-- * Partition patterns
 --
 
 -- | Class for types which can be partitioned into a bounded/enumerable type.
@@ -290,28 +281,30 @@ tp x = hval x `match` inspect
         Zero -> 0
 
 tp2 :: String -> HExp Bool
-tp2 s1 = hval s1 `hmatch` inspect
+tp2 s1 = hval s1 `match` inspect
   where
+    inspect :: PatAscii String -> HExp Bool
     inspect s = hval $ case s of
         Ascii -> True
         Other -> False
 
 tp3 :: Bool -> HExp Bool
-tp3 b = hval b `hmatch` inspect
+tp3 b = hval b `match` inspect
   where
     -- Ugly use of Identity constructor is required currently
     inspect (Identity b') = hval b'
 
 tp4 :: String -> HExp Bool
-tp4 s = HVar s `hmatch` inspect
+tp4 s = match @() (HVar s) inspect
   where
     inspect :: Identity () -> HExp Bool
     inspect _ = hval True
 
 -- Take some variable?
 tp5 :: HExp Int
-tp5 = HVar "x" `hmatch` inspect
+tp5 = match @Int8 (HVar "x") inspect
   where
+    inspect :: PatSign Int8 -> HExp Int
     inspect pf = hval $ case pf of
         Pos  -> 1
         Neg  -> -1
