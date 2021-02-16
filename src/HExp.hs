@@ -1,3 +1,4 @@
+{-# LANGUAGE DataKinds             #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE FlexibleContexts      #-}
 {-# LANGUAGE FlexibleInstances     #-}
@@ -11,6 +12,12 @@
 module HExp where
 
 import Data.Char (isAscii)
+import Data.Functor.Identity (Identity (Identity))
+import Data.Int (Int8)
+import GHC.TypeLits
+
+import qualified Control.Monad.Trans.State as ST
+import qualified Data.Map as M
 
 
 -- | Main data type.
@@ -31,6 +38,8 @@ data HExp a where
         => HExp a           -- ^ Scrutinee
         -> [(f a, HExp b)]  -- ^ Matches (pattern -> body)
         -> HExp b
+
+    HVar :: Name -> HExp a
 
 deriving instance Show a => Show (HExp a)
 
@@ -57,12 +66,90 @@ value is of type 'b'.
 hmerge :: (Show a, Show b, Partable f a) => HExp a -> [(f a, HExp b)] -> HExp b
 hmerge = HMerge
 
+    -- var <- newVar
+    -- ST.modify (\ env -> env{ envVars = M.insert var s (envVars env) })
+    -- return (VarPat s)
+
+
+newtype OutName = OutName String
+type Name = String
+type Hiska = ST.State Env
+data Env = Env
+    { envVars :: M.Map Name OutName
+    , envSeed :: Int
+    }
+
+newVar :: Hiska Name
+newVar = do
+    freshName <- ("v" ++) . show <$> ST.gets envSeed
+    ST.modify (\ env -> env{ envSeed = envSeed env + 1 })
+    return freshName
+
+bind :: Name -> Hiska ()
+bind s = do
+    var <- newVar
+    ST.modify (\ env -> env{ envVars = M.insert var (OutName s) (envVars env) })
+
+data SumConstruct a = SumConstruct Name [Name]
+
+class ConsType f where
+    consRep :: f a -> Hiska (SumConstruct a)
+
+-- Dummy types
+data S a = S a
+data T a = T1 a | T2
+
+instance ConsType S where
+    consRep (S a) = do
+        v <- newVar
+        bind v
+        return $ SumConstruct "S" [v]
+
+instance ConsType T where
+    consRep (T1 a) = do
+        v <- newVar
+        bind v
+        return $ SumConstruct "T1" [v]
+    consRep T2 = do
+        v <- newVar
+        bind v
+        return $ SumConstruct "T2" []
+
+initEnv :: Env
+initEnv = Env
+    { envVars = M.empty
+    , envSeed = 0
+    }
+
+hmatchCons ::
+    forall a b f .
+    ( Show a
+    , Show b
+    , ConsType f
+    )
+    => HExp a           -- ^ Scrutinee
+    -> (f a -> HExp b)  -- ^ Matching function
+    -> HExp b           -- ^ Return an HMerge
+hmatchCons e f = undefined
+--   where
+--     branches :: [(f a, HExp b)]
+--     branches = zip pats bodies
+
+
 hmatch ::
     forall a b f .
     ( Show a
     , Show b
     -- Scrutinee must be representable as a finite/enumerable type.
     , Partable f a
+
+    -- What we really want is:
+    -- - A partition type
+    -- - OR a variable (this one might not be necessary)
+    -- - OR a constructor
+
+    -- Maybe just using different hmatch functions is the easiest in that case
+
     )
     => HExp a           -- ^ Scrutinee
     -> (f a -> HExp b)  -- ^ Matching function
@@ -74,16 +161,6 @@ hmatch e f = hmerge e branches
 
     bodies :: [HExp b]
     bodies = map f pats
-
-    -- NOTE: We use 'next' here, but what would that look like in Haski?
-    -- We don't have the "next" value then.
-    -- For now, say that the scrutinee MUST be an HVal or HFby
-    scrut :: a
-    -- scrut = next e
-    scrut = case e of
-        HVal v   -> v
-        HFby v _ -> v
-        c -> error $ "hmatch: Cannot match on constructor: " <> show c
 
     branches :: [(f a, HExp b)]
     branches = zip pats bodies
@@ -108,6 +185,8 @@ next = \case
 
 -- | Class for types which can be partitioned into a bounded/enumerable type.
 class (Bounded (f a), Enum (f a), Show (f a)) => Partable f a where
+    -- | Needs a function to determine how to partition the type, i.e.
+    -- convert from values to patterns.
     part :: a -> f a
 
 -- Consider rewriting as an GADT?
@@ -140,12 +219,29 @@ instance Partable PatAscii String where
     part :: String -> PatAscii String
     part xs = if all isAscii xs then Ascii else Other
 
+-- Trivial instances for types that are already finite and enumerable
+-- TODO: We don't actually want to write like this though, types like Bool
+-- and Int8 should ideally fit in seamlessly.
+-- Solution? Maybe some more type wrangling so that certain types get proper
+-- default behaviour (that doesn't require using Identity constructor)?
+
+instance Partable Identity Bool where
+    part = Identity
+
+instance Partable Identity Int8 where
+    part = Identity
+
+instance Partable Identity () where
+    part = Identity
+
 --
 -- * Misc
 --
 
 serialize :: Show a => HExp a -> String
 serialize = \case
+    HVar s -> s
+
     HVal v -> show v
 
     HFby v e -> "(" <> show v <> " fby " <> serialize e <> ")"
@@ -160,7 +256,8 @@ serialize = \case
     sCase :: (Show a, Show b) => (a, HExp b) -> String
     sCase (p, e) = "(" <> show p <> " -> " <> serialize e <> ")"
 
--- Test program
+-- Test programs
+
 tp :: Float -> HExp Int
 tp x = hval x `hmatch` inspect
   where
@@ -170,13 +267,21 @@ tp x = hval x `hmatch` inspect
         Neg  -> -1
         Zero -> 0
 
-tp2 :: String -> String -> HExp Bool
-tp2 s1 s2 = hval $ case ( next $ hval s1 `hmatch` inspect
-                        , next $ hval s2 `hmatch` inspect
-                        ) of
-    (True, True) -> True
-    _            -> False
+tp2 :: String -> HExp Bool
+tp2 s1 = hval s1 `hmatch` inspect
   where
     inspect s = hval $ case s of
         Ascii -> True
         Other -> False
+
+tp3 :: Bool -> HExp Bool
+tp3 b = hval b `hmatch` inspect
+  where
+    -- Ugly use of Identity constructor is required currently
+    inspect (Identity b') = hval b'
+
+tp4 :: String -> HExp Bool
+tp4 s = HVar s `hmatch` inspect
+  where
+    inspect :: Identity () -> HExp Bool
+    inspect _ = hval True
