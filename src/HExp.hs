@@ -1,13 +1,14 @@
-{-# LANGUAGE DataKinds             #-}
-{-# LANGUAGE GADTs                 #-}
-{-# LANGUAGE FlexibleContexts      #-}
-{-# LANGUAGE FlexibleInstances     #-}
-{-# LANGUAGE InstanceSigs          #-}
-{-# LANGUAGE LambdaCase            #-}
-{-# LANGUAGE MultiParamTypeClasses #-}
-{-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE TypeFamilies          #-}
+{-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE FlexibleContexts       #-}
+{-# LANGUAGE FlexibleInstances      #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE InstanceSigs           #-}
+{-# LANGUAGE LambdaCase             #-}
+{-# LANGUAGE MultiParamTypeClasses  #-}
+{-# LANGUAGE ScopedTypeVariables    #-}
+{-# LANGUAGE StandaloneDeriving     #-}
+{-# LANGUAGE TypeFamilies           #-}
 
 module HExp where
 
@@ -34,9 +35,10 @@ data HExp a where
         -> HExp a       -- ^ Default value if condition is false
         -> HExp a
 
-    HMerge :: (Show a, Show b, Partable f a)
-        => HExp a           -- ^ Scrutinee
-        -> [(f a, HExp b)]  -- ^ Matches (pattern -> body)
+    -- HMerge :: (Show a, Show b, Matches a b)
+    HMerge :: (Show a, Show b)
+        => HExp a       -- ^ Scrutinee
+        -> [Match a b]  -- ^ Matches (pattern -> body)
         -> HExp b
 
     HVar :: Name -> HExp a
@@ -65,12 +67,9 @@ hwhen = HWhen
 {- | Representation of a case-of expression. Scrutinee is of type 'a', return
 value is of type 'b'.
 -}
-hmerge :: (Show a, Show b, Partable f a) => HExp a -> [(f a, HExp b)] -> HExp b
+-- hmerge :: (Show a, Show b, Matches a b) => HExp a -> [Match a b] -> HExp b
+hmerge :: (Show a, Show b) => HExp a -> [Match a b] -> HExp b
 hmerge = HMerge
-
-    -- var <- newVar
-    -- ST.modify (\ env -> env{ envVars = M.insert var s (envVars env) })
-    -- return (VarPat s)
 
 
 newtype OutName = OutName String
@@ -123,14 +122,43 @@ initEnv = Env
     , envSeed = 0
     }
 
-class Match a b where
-    toPat :: Partable f a => a -> Either (f a, HExp b) (ConsMatch a b)
+data Match a b where
+    PartitionMatch :: Partable f x
+        => (f x, HExp y) -> Match x y
 
--- Left side is some constructor, right side can use HPVar to refer to
--- arguments. Basically, manually writing the representation of a case
--- match :( Possible to enforce something like "HPVar is only allowed"
--- inside a ConsMatch"?
-data ConsMatch a b = ConsMatch (a, HExp b)
+    -- Left side is some constructor, right side can use HPVar to refer to
+    -- arguments. Basically, manually writing the representation of a case
+    -- match :( Possible to enforce something like "HPVar is only allowed"
+    -- inside a ConsMatch"? Some constraint on this constructor?
+    ConsMatch :: (x, HExp y) -> Match x y
+
+deriving instance (Show a, Show b) => Show (Match a b)
+
+-- class Matches a b where
+--     toPat :: a -> Match a b
+
+class Matching a pat where
+    match :: (Show a, Show b) =>
+           HExp a           -- ^ Scrutinee
+        -> (pat -> HExp b)  -- ^ Case analysis function
+        -> HExp b           -- ^ Return an HMerge
+
+-- | Match instance for partition patterns.
+instance Partable f a => Matching a (f a) where
+    match :: forall b . (Show a, Show b) =>
+           HExp a
+        -> (f a -> HExp b)
+        -> HExp b
+    match e caseAnalyze = hmerge e matches
+      where
+        pats :: [f a]
+        pats = [minBound ..]
+
+        bodies :: [HExp b]
+        bodies = map caseAnalyze pats
+
+        matches :: [Match a b]
+        matches = zipWith (curry PartitionMatch) pats bodies
 
 hmatch ::
     forall a b f .
@@ -138,18 +166,17 @@ hmatch ::
     , Show b
     -- Scrutinee must be representable as a finite/enumerable type.
     , Partable f a
-
     -- What we really want is:
     -- - A partition type
     -- - OR a variable (this one might not be necessary)
     -- - OR a constructor (with variables as argmuents)
-
     -- Maybe just using different hmatch functions is the easiest in that case
     )
     => HExp a           -- ^ Scrutinee
     -> (f a -> HExp b)  -- ^ Matching function
     -> HExp b           -- ^ Return an HMerge
-hmatch e f = hmerge e branches
+-- hmatch e f = hmerge e branches
+hmatch e f = undefined
   where
     pats :: [f a]
     pats = [minBound ..]
@@ -241,7 +268,7 @@ serialize = \case
 
     HFby v e -> "(" <> show v <> " fby " <> serialize e <> ")"
 
-    HMerge e branches -> "(merge " <> sBranches branches <> ")"
+    -- HMerge e branches -> "(merge " <> sBranches branches <> ")"
 
     c -> error $ "serialize for `" <> show c <> "` not yet implemented"
   where
@@ -254,7 +281,7 @@ serialize = \case
 -- Test programs
 
 tp :: Float -> HExp Int
-tp x = hval x `hmatch` inspect
+tp x = hval x `match` inspect
   where
     inspect :: PatSign Float -> HExp Int
     inspect pf = hval $ case pf of
