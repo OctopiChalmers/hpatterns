@@ -41,6 +41,8 @@ data HExp a where
 
     HVar :: Name -> HExp a
 
+    HPVar :: HExp a
+
 deriving instance Show a => Show (HExp a)
 
 --
@@ -121,20 +123,14 @@ initEnv = Env
     , envSeed = 0
     }
 
-hmatchCons ::
-    forall a b f .
-    ( Show a
-    , Show b
-    , ConsType f
-    )
-    => HExp a           -- ^ Scrutinee
-    -> (f a -> HExp b)  -- ^ Matching function
-    -> HExp b           -- ^ Return an HMerge
-hmatchCons e f = undefined
---   where
---     branches :: [(f a, HExp b)]
---     branches = zip pats bodies
+class Match a b where
+    toPat :: Partable f a => a -> Either (f a, HExp b) (ConsMatch a b)
 
+-- Left side is some constructor, right side can use HPVar to refer to
+-- arguments. Basically, manually writing the representation of a case
+-- match :( Possible to enforce something like "HPVar is only allowed"
+-- inside a ConsMatch"?
+data ConsMatch a b = ConsMatch (a, HExp b)
 
 hmatch ::
     forall a b f .
@@ -146,10 +142,9 @@ hmatch ::
     -- What we really want is:
     -- - A partition type
     -- - OR a variable (this one might not be necessary)
-    -- - OR a constructor
+    -- - OR a constructor (with variables as argmuents)
 
     -- Maybe just using different hmatch functions is the easiest in that case
-
     )
     => HExp a           -- ^ Scrutinee
     -> (f a -> HExp b)  -- ^ Matching function
@@ -285,3 +280,12 @@ tp4 s = HVar s `hmatch` inspect
   where
     inspect :: Identity () -> HExp Bool
     inspect _ = hval True
+
+-- Take some variable?
+tp5 :: HExp Int
+tp5 = HVar "x" `hmatch` inspect
+  where
+    inspect pf = hval $ case pf of
+        Pos  -> 1
+        Neg  -> -1
+        Zero -> 0
