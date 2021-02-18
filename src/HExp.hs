@@ -259,20 +259,26 @@ serialize = \case
 
     HFby v e -> "(" <> show v <> " fby " <> serialize e <> ")"
 
-    -- HMerge e branches -> "(merge " <> sBranches branches <> ")"
+    HMerge e branches ->
+        "(merge "
+        <> "(" <> serialize e <> ")" <> " "
+        <> sBranches branches
+        <> ")"
 
     c -> error $ "serialize for `" <> show c <> "` not yet implemented"
   where
-    sBranches :: (Show a, Show b) => [(a, HExp b)] -> String
+    sBranches :: (Show a, Show b) => [Match a b] -> String
     sBranches = unwords . map sCase
 
-    sCase :: (Show a, Show b) => (a, HExp b) -> String
-    sCase (p, e) = "(" <> show p <> " -> " <> serialize e <> ")"
+    sCase :: (Show a, Show b) => Match a b -> String
+    sCase = \case
+        PartitionMatch (p, e) -> "(" <> show p <> " -> " <> serialize e <> ")"
+        ConsMatch (c, e)      -> "(" <> show c <> " -> " <> serialize e <> ")"
 
 -- Test programs
 
-tp :: Float -> HExp Int
-tp x = hval x `match` inspect
+testSign :: Float -> HExp Int
+testSign x = hval x `match` inspect
   where
     inspect :: PatSign Float -> HExp Int
     inspect pf = hval $ case pf of
@@ -280,29 +286,30 @@ tp x = hval x `match` inspect
         Neg  -> -1
         Zero -> 0
 
-tp2 :: String -> HExp Bool
-tp2 s1 = hval s1 `match` inspect
+testAscii :: String -> HExp Bool
+testAscii s1 = hval s1 `match` inspect
   where
     inspect :: PatAscii String -> HExp Bool
     inspect s = hval $ case s of
         Ascii -> True
         Other -> False
 
-tp3 :: Bool -> HExp Bool
-tp3 b = hval b `match` inspect
+testNot :: Bool -> HExp Bool
+testNot b = hval b `match` inspect
   where
     -- Ugly use of Identity constructor is required currently
-    inspect (Identity b') = hval b'
+    inspect :: Identity Bool -> HExp Bool
+    inspect (Identity b') = hval (not b')
 
-tp4 :: String -> HExp Bool
-tp4 s = match @() (HVar s) inspect
+testUnit :: String -> HExp Bool
+testUnit s = match @() (HVar s) inspect
   where
     inspect :: Identity () -> HExp Bool
     inspect _ = hval True
 
 -- Take some variable?
-tp5 :: HExp Int
-tp5 = match @Int8 (HVar "x") inspect
+testSign2 :: HExp Int
+testSign2 = match @Int8 (HVar "x") inspect
   where
     inspect :: PatSign Int8 -> HExp Int
     inspect pf = hval $ case pf of
