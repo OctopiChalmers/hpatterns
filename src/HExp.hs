@@ -28,8 +28,17 @@ data HExp a where
         a -> HExp a -> HExp a
 
     HMergePart :: (Show a, Show b, Partable p a)
-        => HExp a       -- ^ Scrutinee
+        => HExp a           -- ^ Scrutinee
         -> [(p a, HExp b)]  -- ^ Matches (pattern -> body)
+        -> HExp b
+
+    {- | For simple product types the purpose of pattern matching is
+    simply to deconstruct the value into its constructor and paramenters.
+    Therefore, we don't provide a list of branches/matches like with
+    partition matching, for example.
+    -}
+    HMergeProd :: (Show a, Show b, ProdType a)
+        => HExp a  -- ^ Scrutinee
         -> HExp b
 
     HVar :: Name -> HExp a
@@ -151,6 +160,51 @@ instance Partable Identity () where
 
 --
 -- * Constructor patterns
+--
+
+hmatchProd ::
+    ( ProdType a
+    , Show b
+    )
+    => HExp a
+    -> (t -> HExp b)
+    -> HExp b
+hmatchProd = undefined
+
+-- Stolen/"inspired" from "Compiling an Haskell EDSL to C" by Dedden, F.H. 2018
+-- | Class for representing product types; single constructor only for now.
+class ProdType a where
+    -- | We need to be able to get the name of the constructor.
+    consName :: a -> String
+
+    args :: a -> ConsArgs a
+
+-- | Supported types as constructors.
+data TypeRepr :: * -> * where
+    TBool :: TypeRepr Bool
+    TInt8 :: TypeRepr Int8
+
+    -- To support nested product types.
+    TProdType :: (ProdType s) => s -> TypeRepr s
+
+type ConsArgs a = [ConsArg]
+data ConsArg = forall a.
+    ConsArg
+        (TypeRepr a)  -- ^ Type of argument
+        a             -- ^ Value of argument
+
+--
+
+data A = A Int8
+instance ProdType A where
+    consName :: A -> String
+    consName _ = "A"
+
+    -- For the getter name, generate fresh variable?
+    args :: A -> ConsArgs A
+    args (A n) = [ConsArg TInt8 n]
+
+
 --
 
 newtype OutName = OutName String
