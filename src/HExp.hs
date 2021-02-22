@@ -73,17 +73,17 @@ hmergePart = HMergePart
 --
 
 -- | Class for types which can be partitioned into a bounded/enumerable type.
-class (Bounded (f a), Enum (f a), Show (f a)) => Partable f a where
+class (Bounded (p a), Enum (p a), Show (p a)) => Partable p a where
     {- | Instances for partable types need a function to determine how to
     partition the type, i.e. convert from values of that type to
     a finite number of patterns (zero-argument constructors, basically).
     -}
-    partition :: a -> f a
+    partition :: a -> p a
 
     {- | We also need to know how to represent the patterns in our
     expression language.
     -}
-    toHExp :: f a -> HExp a
+    toHExp :: p a -> HExp a
 
     {- Essentially, what it means to be a partable type f a is:
     * We have a definition of how to put all values of f a into "buckets".
@@ -167,7 +167,7 @@ hmatchProd ::
     , Show b
     )
     => HExp a
-    -> (t -> HExp b)
+    -> (a -> HExp b)
     -> HExp b
 hmatchProd = undefined
 
