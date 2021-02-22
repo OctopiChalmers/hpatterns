@@ -27,9 +27,9 @@ data HExp a where
     HFby   ::
         a -> HExp a -> HExp a
 
-    HMerge :: (Show a, Show b)
+    HMergePart :: (Show a, Show b, Partable p a)
         => HExp a       -- ^ Scrutinee
-        -> [Match a b]  -- ^ Matches (pattern -> body)
+        -> [(p a, HExp b)]  -- ^ Matches (pattern -> body)
         -> HExp b
 
     HVar :: Name -> HExp a
@@ -53,63 +53,101 @@ hfby = HFby
 {- | Representation of a case-of expression. Scrutinee is of type 'a', return
 value is of type 'b'.
 -}
--- hmerge :: (Show a, Show b, Matches a b) => HExp a -> [Match a b] -> HExp b
-hmerge :: (Show a, Show b) => HExp a -> [Match a b] -> HExp b
-hmerge = HMerge
+hmergePart :: (Show a, Show b, Partable p a)
+    => HExp a
+    -> [(p a, HExp b)]
+    -> HExp b
+hmergePart = HMergePart
 
 --
--- * Match representation
+-- * Partition patterns
 --
 
-data Match a b where
-    -- Left side is the pattern, right side is the body that will be "run"
-    -- when the corresponding partition is matched. Seems more sensible
-    -- than ConsMatch
-    PartitionMatch :: Partable f x
-        => (f x, HExp y) -> Match x y
+-- | Class for types which can be partitioned into a bounded/enumerable type.
+class (Bounded (f a), Enum (f a), Show (f a)) => Partable f a where
+    {- | Instances for partable types need a function to determine how to
+    partition the type, i.e. convert from values of that type to
+    a finite number of patterns (zero-argument constructors, basically).
+    -}
+    partition :: a -> f a
 
-    -- Left side is some constructor, right side can use HPVar to refer to
-    -- arguments. Basically, manually writing the representation of a case
-    -- match :( Possible to enforce something like "HPVar is only allowed"
-    -- inside a ConsMatch"? Some constraint on this constructor?
-    ConsMatch :: (c, HExp r) -> Match c r
+    {- | We also need to know how to represent the patterns in our
+    expression language.
+    -}
+    toHExp :: f a -> HExp a
 
-deriving instance (Show a, Show b) => Show (Match a b)
+    {- Essentially, what it means to be a partable type f a is:
+    * We have a definition of how to put all values of f a into "buckets".
+      While the type a itself might not be finite, the number of buckets is.
+    * We have a definition of how to represent these buckets, and the
+      conditions for placing values into these buckets, as Haski (and
+      through the backend, C).
+    -}
 
-class Matching a pat where
-    match :: (Show a, Show b) =>
-           HExp a           -- ^ Scrutinee
-        -> (pat -> HExp b)  -- ^ Case analysis function
-        -> HExp b           -- ^ Return an HMerge
+hmatchPart ::
+    forall a b p .
+    ( Show a
+    , Show b
+    , Partable p a
+    )
+    => HExp a           -- ^ Scrutinee
+    -> (p a -> HExp b)  -- ^ Matching function
+    -> HExp b           -- ^ Return an HMerge
+hmatchPart e f = hmergePart e branches
+  where
+    pats :: [p a]
+    pats = [minBound ..]
 
--- instance ConsType f => Matching a (f a) where
--- How to work around this? ^ We want some 'match' behavior when f a
--- is a constructor, and some other when it is a partition type. Maybe we
--- need an actual type (with ConsType/Partable constraint), so that these
--- instances work out.
+    bodies :: [HExp b]
+    bodies = map f pats
 
--- Also, how do we solve the very ugly thing we do with ConsType right now?
--- Can't figure out a way to allow the user to write "normal" case-of
--- expressions. Maybe have the user provide an additional list of
--- patterns/constructors/whatever when calling 'match'? In that case,
--- the function arity will differ depending on type... Type families?
+    branches :: [(p a, HExp b)]
+    branches = zip pats bodies
 
--- | Match instance for partition patterns.
-instance Partable f a => Matching a (f a) where
-    match :: forall b . (Show a, Show b) =>
-           HExp a
-        -> (f a -> HExp b)
-        -> HExp b
-    match e caseAnalyze = hmerge e matches
-      where
-        pats :: [f a]
-        pats = [minBound ..]
+-- Consider rewriting as an GADT?
+data Num a => PatSign a = Pos | Zero | Neg
+    deriving (Bounded, Enum, Show)
 
-        bodies :: [HExp b]
-        bodies = map caseAnalyze pats
+instance (Ord a, Num a) => Partable PatSign a where
+    partition :: a -> PatSign a
+    partition x
+        | x > 0     = Pos
+        | x < 0     = Neg
+        | otherwise = Zero
 
-        matches :: [Match a b]
-        matches = zipWith (curry PartitionMatch) pats bodies
+data Num a => PatParity a = Even | Odd
+    deriving (Bounded, Enum, Show)
+
+instance Integral a => Partable PatParity a where
+    partition :: a -> PatParity a
+    partition x = if even x then Even else Odd
+
+data IsText a => PatAscii a = Ascii | Other
+    deriving (Bounded, Enum, Show)
+
+-- Can we get this behaviour in some other way? I.e. "We can only instantiate
+-- PatAscii with String"
+class IsText a
+instance IsText String
+
+instance Partable PatAscii String where
+    partition :: String -> PatAscii String
+    partition xs = if all isAscii xs then Ascii else Other
+
+-- Trivial instances for types that are already finite and enumerable
+-- TODO: We don't actually want to write like this though, types like Bool
+-- and Int8 should ideally fit in seamlessly.
+-- Solution? Maybe some more type wrangling so that certain types get proper
+-- default behaviour (that doesn't require using Identity constructor)?
+
+instance Partable Identity Bool where
+    partition = Identity
+
+instance Partable Identity Int8 where
+    partition = Identity
+
+instance Partable Identity () where
+    partition = Identity
 
 --
 -- * Constructor patterns
@@ -166,76 +204,6 @@ initEnv = Env
     }
 
 --
--- * Partition patterns
---
-
--- | Class for types which can be partitioned into a bounded/enumerable type.
-class (Bounded (f a), Enum (f a), Show (f a)) => Partable f a where
-    {- | Instances for partable types need a function to determine how to
-    partition the type, i.e. convert from values of that type to
-    a finite number of patterns (zero-argument constructors, basically).
-    -}
-    part :: a -> f a
-
-    {- | We also need to know how to represent the patterns in our
-    expression language.
-    -}
-    toHExp :: f a -> HExp a
-
-    {- Essentially, what it means to be a partable type f a is:
-    * We have a definition of how to put all values of f a into "buckets".
-      While the type a itself might not be finite, the number of buckets is.
-    * We have a definition of how to represent these buckets, and the
-      conditions for placing values into these buckets, as Haski (and
-      through the backend, C).
-    -}
-
--- Consider rewriting as an GADT?
-data Num a => PatSign a = Pos | Zero | Neg
-    deriving (Bounded, Enum, Show)
-
-instance (Ord a, Num a) => Partable PatSign a where
-    part :: a -> PatSign a
-    part x
-        | x > 0     = Pos
-        | x < 0     = Neg
-        | otherwise = Zero
-
-data Num a => PatParity a = Even | Odd
-    deriving (Bounded, Enum, Show)
-
-instance Integral a => Partable PatParity a where
-    part :: a -> PatParity a
-    part x = if even x then Even else Odd
-
-data IsText a => PatAscii a = Ascii | Other
-    deriving (Bounded, Enum, Show)
-
--- Can we get this behaviour in some other way? I.e. "We can only instantiate
--- PatAscii with String"
-class IsText a
-instance IsText String
-
-instance Partable PatAscii String where
-    part :: String -> PatAscii String
-    part xs = if all isAscii xs then Ascii else Other
-
--- Trivial instances for types that are already finite and enumerable
--- TODO: We don't actually want to write like this though, types like Bool
--- and Int8 should ideally fit in seamlessly.
--- Solution? Maybe some more type wrangling so that certain types get proper
--- default behaviour (that doesn't require using Identity constructor)?
-
-instance Partable Identity Bool where
-    part = Identity
-
-instance Partable Identity Int8 where
-    part = Identity
-
-instance Partable Identity () where
-    part = Identity
-
---
 -- * Misc
 --
 
@@ -247,7 +215,7 @@ serialize = \case
 
     HFby v e -> "(" <> show v <> " fby " <> serialize e <> ")"
 
-    HMerge e branches ->
+    HMergePart e branches ->
         "(merge "
         <> "(" <> serialize e <> ")" <> " "
         <> sBranches branches
@@ -255,10 +223,8 @@ serialize = \case
 
     c -> error $ "serialize for `" <> show c <> "` not yet implemented"
   where
-    sBranches :: (Show a, Show b) => [Match a b] -> String
+    sBranches :: (Show a, Show b, Partable p a) => [(p a, HExp b)] -> String
     sBranches = unwords . map sCase
 
-    sCase :: (Show a, Show b) => Match a b -> String
-    sCase = \case
-        PartitionMatch (p, e) -> "(" <> show p <> " -> " <> serialize e <> ")"
-        ConsMatch (c, e)      -> "(" <> show c <> " -> " <> serialize e <> ")"
+    sCase :: (Show a, Show b, Partable p a) => (p a, HExp b) -> String
+    sCase (pat, e) = "(" <> show pat <> " -> " <> serialize e <> ")"

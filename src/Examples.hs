@@ -9,7 +9,7 @@ import HExp
 
 
 testSign :: Float -> HExp Int
-testSign x = hval x `match` inspect
+testSign x = hval x `hmatchPart` inspect
   where
     inspect :: PatSign Float -> HExp Int
     inspect pf = hval $ case pf of
@@ -18,7 +18,7 @@ testSign x = hval x `match` inspect
         Zero -> 0
 
 testAscii :: String -> HExp Bool
-testAscii s1 = hval s1 `match` inspect
+testAscii s1 = hval s1 `hmatchPart` inspect
   where
     inspect :: PatAscii String -> HExp Bool
     inspect s = hval $ case s of
@@ -26,21 +26,21 @@ testAscii s1 = hval s1 `match` inspect
         Other -> False
 
 testNot :: Bool -> HExp Bool
-testNot b = hval b `match` inspect
+testNot b = hval b `hmatchPart` inspect
   where
     -- Ugly use of Identity constructor is required currently
     inspect :: Identity Bool -> HExp Bool
     inspect (Identity b') = hval (not b')
 
 testUnit :: String -> HExp Bool
-testUnit s = match @() (HVar s) inspect
+testUnit s = hmatchPart @() (HVar s) inspect
   where
     inspect :: Identity () -> HExp Bool
     inspect _ = hval True
 
 -- Take some variable?
 testSign2 :: HExp Int
-testSign2 = match @Int8 (HVar "x") inspect
+testSign2 = hmatchPart @Int8 (HVar "x") inspect
   where
     inspect :: PatSign Int8 -> HExp Int
     inspect pf = hval $ case pf of
