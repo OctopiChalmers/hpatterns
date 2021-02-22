@@ -27,13 +27,6 @@ data HExp a where
     HFby   ::
         a -> HExp a -> HExp a
 
-    HWhen  :: (Show a, Show b, Eq b)
-        => HExp a       -- ^ Return when condition is true
-        -> (HExp b, b)  -- ^ Condition is 'When HExp b === b'
-        -> HExp a       -- ^ Default value if condition is false
-        -> HExp a
-
-    -- HMerge :: (Show a, Show b, Matches a b)
     HMerge :: (Show a, Show b)
         => HExp a       -- ^ Scrutinee
         -> [Match a b]  -- ^ Matches (pattern -> body)
@@ -57,31 +50,12 @@ hval = HVal
 hfby :: a -> HExp a -> HExp a
 hfby = HFby
 
--- What to do when there isn't a match? I.e. when the "stream" would not
--- produce a value?
-hwhen :: (Show a, Show b, Eq b) => HExp a -> (HExp b, b) -> HExp a -> HExp a
-hwhen = HWhen
-
 {- | Representation of a case-of expression. Scrutinee is of type 'a', return
 value is of type 'b'.
 -}
 -- hmerge :: (Show a, Show b, Matches a b) => HExp a -> [Match a b] -> HExp b
 hmerge :: (Show a, Show b) => HExp a -> [Match a b] -> HExp b
 hmerge = HMerge
-
--- Maybe this isn't really possible in Haski, when using actual streams.
--- Trying to implement this function seems bad, semantics are very unclear.
-next :: HExp a -> a
-next = \case
-    HFby x e -> x
-    HVal x   -> x
-
-    HWhen e1 (e2, x) def
-        | next e2 == x -> next e1
-        | otherwise -> next def
-
-    -- What should the behaviour be here?
-    HMerge e branches -> undefined
 
 --
 -- * Match representation
@@ -98,7 +72,7 @@ data Match a b where
     -- arguments. Basically, manually writing the representation of a case
     -- match :( Possible to enforce something like "HPVar is only allowed"
     -- inside a ConsMatch"? Some constraint on this constructor?
-    ConsMatch :: (x, HExp y) -> Match x y
+    ConsMatch :: (c, HExp r) -> Match c r
 
 deriving instance (Show a, Show b) => Show (Match a b)
 
@@ -108,7 +82,7 @@ class Matching a pat where
         -> (pat -> HExp b)  -- ^ Case analysis function
         -> HExp b           -- ^ Return an HMerge
 
---          instance ConsType f => Matching a (f a) where
+-- instance ConsType f => Matching a (f a) where
 -- How to work around this? ^ We want some 'match' behavior when f a
 -- is a constructor, and some other when it is a partition type. Maybe we
 -- need an actual type (with ConsType/Partable constraint), so that these
@@ -197,9 +171,24 @@ initEnv = Env
 
 -- | Class for types which can be partitioned into a bounded/enumerable type.
 class (Bounded (f a), Enum (f a), Show (f a)) => Partable f a where
-    -- | Needs a function to determine how to partition the type, i.e.
-    -- convert from values to patterns.
+    {- | Instances for partable types need a function to determine how to
+    partition the type, i.e. convert from values of that type to
+    a finite number of patterns (zero-argument constructors, basically).
+    -}
     part :: a -> f a
+
+    {- | We also need to know how to represent the patterns in our
+    expression language.
+    -}
+    toHExp :: f a -> HExp a
+
+    {- Essentially, what it means to be a partable type f a is:
+    * We have a definition of how to put all values of f a into "buckets".
+      While the type a itself might not be finite, the number of buckets is.
+    * We have a definition of how to represent these buckets, and the
+      conditions for placing values into these buckets, as Haski (and
+      through the backend, C).
+    -}
 
 -- Consider rewriting as an GADT?
 data Num a => PatSign a = Pos | Zero | Neg
