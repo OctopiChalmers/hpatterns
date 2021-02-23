@@ -164,35 +164,48 @@ instance Partable Identity () where
 --
 
 hmatchProd ::
+    forall a b .
     ( ProdType a
     , Show a
     , Show b
-    )
-    => HExp a
+    ) =>
+    {- | Do we actually need this input parameter? Seems like it may be the case
+    that we never actually inspect the actual argument expression. Rather,
+    simply knowing the type should be enough to get valid behaviour
+    (because an instance for ProdType exists).
+    -}
+    HExp a ->
 
-    -- Any constraints on this function? Unfortunately, we cannot just have
-    -- the user refer to the constructor arguments like normal. Rather, they
-    -- need to maybe use the pVar combinator to refer to each argument in
-    -- order? So if type a has a constructor with 2 args, then the user
-    -- can/must use 2 pVars to refer to the arguments? How do we get this
-    -- type safe, i.e. ensure, that the function passed is one that can
-    -- actually be used on the type a? Maybe put more stuff into the
-    -- ProdType class? That way, we could assume more stuff (class methods)
-    -- here in the matching function.
-    -> (a -> HExp b)
+    {- | Any constraints on this function? Unfortunately, we cannot just have
+    the user refer to the constructor arguments like normal. Rather, they
+    need to maybe use the pVar combinator to refer to each argument in
+    order? So if type a has a constructor with 2 args, then the user
+    can/must use 2 pVars to refer to the arguments? How do we get this
+    type safe, i.e. ensure, that the function passed is one that can
+    actually be used on the type a? Maybe put more stuff into the
+    ProdType class? That way, we could assume more stuff (class methods)
+    here in the matching function.
+    -}
+    (ConsArgs a -> HExp b) ->
 
-    -> HExp b
+    HExp b
 hmatchProd scrutExp f = HMergeProd scrutExp body
   where
-    body = undefined
+    v :: a
+    v = case scrutExp of
+        HVal x   -> x
+        HFby x _ -> x
+
+    body = f (args v)
 
 
-testSign :: W Bool -> HExp Bool
-testSign x = hval x `hmatchProd` inspect
+tes :: W Bool -> HExp Bool
+tes x = hval x `hmatchProd` inspect
   where
-    inspect :: W Bool -> HExp Bool
-    inspect x = hval $ case x of
-        W b -> not b
+    -- How to make this function type safe? Feels like some level of
+    -- type programming is in order, probably
+    inspect :: ConsArgs (W Bool) -> HExp Bool
+    inspect [ConsArg TBool b] = hval $ not b
 
 newtype W a = W a
     deriving (Show)
