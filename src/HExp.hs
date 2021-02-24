@@ -38,11 +38,11 @@ data HExp a where
     partition matching, for example.
     -}
     HMergeProd :: (Show a, Show b, ProdType a)
-        => HExp a  -- ^ Scrutinee
+        => a  -- ^ Scrutinee
         -> HExp b
         -> HExp b
 
-    HVar :: Name -> HExp a
+    HVar :: String -> HExp a
 
     HPVar :: HExp a
 
@@ -174,7 +174,7 @@ hmatchProd ::
     simply knowing the type should be enough to get valid behaviour
     (because an instance for ProdType exists).
     -}
-    HExp a ->
+    a ->
 
     {- | Any constraints on this function? Unfortunately, we cannot just have
     the user refer to the constructor arguments like normal. Rather, they
@@ -189,36 +189,25 @@ hmatchProd ::
     (ConsArgs a -> HExp b) ->
 
     HExp b
-hmatchProd scrutExp f = HMergeProd scrutExp body
-  where
-    v :: a
-    v = case scrutExp of
-        HVal x   -> x
-        HFby x _ -> x
+hmatchProd scrut f = f (args scrut)
 
-    body = f (args v)
-
-
-tes :: W Bool -> HExp Bool
-tes x = hval x `hmatchProd` inspect
+tes :: B -> HExp Bool
+tes x = x `hmatchProd` inspect
   where
     -- How to make this function type safe? Feels like some level of
     -- type programming is in order, probably
-    inspect :: ConsArgs (W Bool) -> HExp Bool
+    inspect :: ConsArgs B -> HExp Bool
     inspect [ConsArg TBool b] = hval $ not b
 
-newtype W a = W a
+newtype B = B Bool
     deriving (Show)
-instance ProdType (W Bool) where
-    consName :: W Bool -> String
-    consName _ = "W"
+instance ProdType B where
+    consName :: B -> String
+    consName _ = "B"
 
     -- For the getter name, generate fresh variable?
-    args :: W Bool -> ConsArgs (W Bool)
-    args (W b) = [ConsArg TBool b]
-
-pVar :: HExp a
-pVar = HPVar
+    args :: B -> ConsArgs B
+    args (B b) = [ConsArg TBool b]
 
 -- Stolen/"inspired" from "Compiling an Haskell EDSL to C" by Dedden, F.H. 2018
 -- | Class for representing product types; single constructor only for now.
@@ -237,74 +226,10 @@ data TypeRepr :: * -> * where
     TProdType :: (ProdType s) => s -> TypeRepr s
 
 type ConsArgs a = [ConsArg]
-data ConsArg = forall a.
+data ConsArg = forall a .
     ConsArg
         (TypeRepr a)  -- ^ Type of argument
         a             -- ^ Value of argument
-
---
-
-data A = A Int8
-instance ProdType A where
-    consName :: A -> String
-    consName _ = "A"
-
-    -- For the getter name, generate fresh variable?
-    args :: A -> ConsArgs A
-    args (A n) = [ConsArg TInt8 n]
-
-
---
-
-newtype OutName = OutName String
-type Name = String
-type Hiska = ST.State Env
-data Env = Env
-    { envVars :: M.Map Name OutName
-    , envSeed :: Int
-    }
-
-newVar :: Hiska Name
-newVar = do
-    freshName <- ("v" ++) . show <$> ST.gets envSeed
-    ST.modify (\ env -> env{ envSeed = envSeed env + 1 })
-    return freshName
-
-bind :: Name -> Hiska ()
-bind s = do
-    var <- newVar
-    ST.modify (\ env -> env{ envVars = M.insert var (OutName s) (envVars env) })
-
-data SumConstruct a = SumConstruct Name [Name]
-
-class ConsType f where
-    consRep :: f a -> Hiska (SumConstruct a)
-
--- Dummy types
-data S a = S a
-data T a = T1 a | T2
-
-instance ConsType S where
-    consRep (S a) = do
-        v <- newVar
-        bind v
-        return $ SumConstruct "S" [v]
-
-instance ConsType T where
-    consRep (T1 a) = do
-        v <- newVar
-        bind v
-        return $ SumConstruct "T1" [v]
-    consRep T2 = do
-        v <- newVar
-        bind v
-        return $ SumConstruct "T2" []
-
-initEnv :: Env
-initEnv = Env
-    { envVars = M.empty
-    , envSeed = 0
-    }
 
 --
 -- * Misc
