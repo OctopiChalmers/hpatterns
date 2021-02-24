@@ -1,5 +1,7 @@
+{-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE DataKinds              #-}
 {-# LANGUAGE GADTs                  #-}
+{-# LANGUAGE GeneralisedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleContexts       #-}
 {-# LANGUAGE FlexibleInstances      #-}
 {-# LANGUAGE InstanceSigs           #-}
@@ -7,7 +9,9 @@
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE StandaloneDeriving     #-}
+{-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
+{-# LANGUAGE UndecidableInstances   #-}
 
 module HExp where
 
@@ -169,11 +173,7 @@ hmatchProd ::
     , Show a
     , Show b
     ) =>
-    {- | Do we actually need this input parameter? Seems like it may be the case
-    that we never actually inspect the actual argument expression. Rather,
-    simply knowing the type should be enough to get valid behaviour
-    (because an instance for ProdType exists).
-    -}
+
     a ->
 
     {- | Any constraints on this function? Unfortunately, we cannot just have
@@ -191,27 +191,46 @@ hmatchProd ::
     HExp b
 hmatchProd scrut f = f (args scrut)
 
+-- If we want to try to generate all possible values of the args, we'd need
+-- some function similar to this:
+--      extractArgs :: ProdType a => ConsArgs a -> SomeStructure a
+-- The return type here depends on the type of a (what the struct looks
+-- like), so this seems pretty hard!
+-- Functional dependencies? (the output structure/type depends on a)
+-- Type families? (should be able to solve the same problem)
+
 tes :: B -> HExp Bool
 tes x = x `hmatchProd` inspect
   where
     -- How to make this function type safe? Feels like some level of
     -- type programming is in order, probably
-    inspect :: ConsArgs B -> HExp Bool
+    inspect :: [ConsArg] -> HExp Bool
     inspect [ConsArg TBool b] = hval $ not b
 
-newtype B = B Bool
-    deriving (Show)
+newtype B = B
+    { bB :: Bool
+    }
+    deriving (Show, Bounded, Enum)
 instance ProdType B where
     consName :: B -> String
     consName _ = "B"
 
-    -- For the getter name, generate fresh variable?
     args :: B -> ConsArgs B
     args (B b) = [ConsArg TBool b]
 
 -- Stolen/"inspired" from "Compiling an Haskell EDSL to C" by Dedden, F.H. 2018
 -- | Class for representing product types; single constructor only for now.
-class ProdType a where
+class (Bounded a, Enum a) => ProdType a where
+    -- Functional dependencies/type families, for having different output
+    -- types? I.e., something like:
+    -- class ... => ProdType a out | a -> out  -- output type depends on a
+    --     extractArgs :: a -> out
+    -- So, for B:
+    --     extractArgs :: B -> Bool  -- For a 2D vec, this could be (Int, Int)
+    --     extractArgs (B b) = b
+
+    -- type OutType a ::
+
     -- | We need to be able to get the name of the constructor.
     consName :: a -> String
 
@@ -226,7 +245,11 @@ data TypeRepr :: * -> * where
     TProdType :: (ProdType s) => s -> TypeRepr s
 
 type ConsArgs a = [ConsArg]
-data ConsArg = forall a .
+
+-- How does this type work? How can we define Enum/Bounded
+-- instances for it? (Which we would need to generate all
+-- possible arguments).
+data ConsArg = forall a . (Bounded a, Enum a) =>
     ConsArg
         (TypeRepr a)  -- ^ Type of argument
         a             -- ^ Value of argument
