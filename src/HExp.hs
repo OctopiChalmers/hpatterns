@@ -31,47 +31,70 @@ data HExp a where
     HFby   ::
         a -> HExp a -> HExp a
 
-    HMergePart :: (Show a, Show b, Partable p a)
+    HMergePart :: (Show a, Partable p a)
         => HExp a           -- ^ Scrutinee
         -> [(p a, HExp b)]  -- ^ Matches (pattern -> body)
         -> HExp b
 
-    {- | For simple product types the purpose of pattern matching is
-    simply to deconstruct the value into its constructor and paramenters.
-    Therefore, we don't provide a list of branches/matches like with
-    partition matching, for example.
-    -}
-    HMergeProd :: (Show a, Show b, ProdType a)
-        => a  -- ^ Scrutinee
-        -> HExp b
-        -> HExp b
-
     HVar :: String -> HExp a
 
-    HPVar :: HExp a
+    -- Representation of a case-of expression with a single branch.
+    -- TODO: In future, expand to two branches (which can then
+    --       model multiple branches).
+    HCase :: (Show a, ProdType a)
+        => HExp a  -- ^ Scrutinee
+        -> HExp b  -- ^ RHS body; uses PVar to refer to components of
+                   -- the scrutinee.
+        -> HExp b
 
+    HAdd :: HExp a -> HExp a -> HExp a
+    HMul :: HExp a -> HExp a -> HExp a
 deriving instance Show a => Show (HExp a)
 
+-- | Definition of numeric operators on HExps.
+instance Num a => Num (HExp a) where
+    n1 + n2       = HAdd n1 n2
+    n1 * n2       = HMul n1 n2
+    fromInteger n = HVal $ fromInteger n
+    -- abs n         = HAbs n
+    -- signum c      = error "TODO"
+    -- negate c      = HNeg c
+
 --
--- * Combinators
+-- * Patterns for product types
 --
 
--- | Lift a value into an expression.
-hval :: a -> HExp a
-hval = HVal
+newtype B = B Bool
+    deriving (Show, Bounded, Enum)
+instance ProdType B where
+    consName :: B -> String
+    consName _ = "B"
 
--- | Constructor. Compare to 'cons'.
-hfby :: a -> HExp a -> HExp a
-hfby = HFby
+    args :: B -> ConsArgs B
+    args (B b) = [ConsArg TBool b]
 
-{- | Representation of a case-of expression. Scrutinee is of type 'a', return
-value is of type 'b'.
--}
-hmergePart :: (Show a, Show b, Partable p a)
-    => HExp a
-    -> [(p a, HExp b)]
-    -> HExp b
-hmergePart = HMergePart
+-- Stolen/"inspired" from "Compiling an Haskell EDSL to C" by Dedden, F.H. 2018
+-- | Class for representing product types; single constructor only for now.
+class (Bounded a, Enum a) => ProdType a where
+    -- | We need to be able to get the name of the constructor.
+    consName :: a -> String
+
+    args :: a -> ConsArgs a
+
+-- | Supported types as constructors.
+data TypeRepr :: * -> * where
+    TBool :: TypeRepr Bool
+    TInt8 :: TypeRepr Int8
+
+    -- To support nested product types.
+    TProdType :: (ProdType s) => s -> TypeRepr s
+
+-- We use this to model heterogenous lists.
+type ConsArgs a = [ConsArg]
+data ConsArg = forall a . (Bounded a, Enum a) =>
+    ConsArg
+        (TypeRepr a)  -- ^ Type of argument
+        a             -- ^ Value of argument
 
 --
 -- * Partition patterns
@@ -164,95 +187,23 @@ instance Partable Identity () where
     partition = Identity
 
 --
--- * Constructor patterns
+-- * Combinators
 --
 
-hmatchProd ::
-    forall a b .
-    ( ProdType a
-    , Show a
-    , Show b
-    ) =>
+-- | Lift a value into an expression.
+hval :: a -> HExp a
+hval = HVal
 
-    a ->
+-- | Constructor. Compare to 'cons'.
+hfby :: a -> HExp a -> HExp a
+hfby = HFby
 
-    {- | Any constraints on this function? Unfortunately, we cannot just have
-    the user refer to the constructor arguments like normal. Rather, they
-    need to maybe use the pVar combinator to refer to each argument in
-    order? So if type a has a constructor with 2 args, then the user
-    can/must use 2 pVars to refer to the arguments? How do we get this
-    type safe, i.e. ensure, that the function passed is one that can
-    actually be used on the type a? Maybe put more stuff into the
-    ProdType class? That way, we could assume more stuff (class methods)
-    here in the matching function.
-    -}
-    (ConsArgs a -> HExp b) ->
-
-    HExp b
-hmatchProd scrut f = f (args scrut)
-
--- If we want to try to generate all possible values of the args, we'd need
--- some function similar to this:
---      extractArgs :: ProdType a => ConsArgs a -> SomeStructure a
--- The return type here depends on the type of a (what the struct looks
--- like), so this seems pretty hard!
--- Functional dependencies? (the output structure/type depends on a)
--- Type families? (should be able to solve the same problem)
-
-tes :: B -> HExp Bool
-tes x = x `hmatchProd` inspect
-  where
-    -- How to make this function type safe? Feels like some level of
-    -- type programming is in order, probably
-    inspect :: [ConsArg] -> HExp Bool
-    inspect [ConsArg TBool b] = hval $ not b
-
-newtype B = B
-    { bB :: Bool
-    }
-    deriving (Show, Bounded, Enum)
-instance ProdType B where
-    consName :: B -> String
-    consName _ = "B"
-
-    args :: B -> ConsArgs B
-    args (B b) = [ConsArg TBool b]
-
--- Stolen/"inspired" from "Compiling an Haskell EDSL to C" by Dedden, F.H. 2018
--- | Class for representing product types; single constructor only for now.
-class (Bounded a, Enum a) => ProdType a where
-    -- Functional dependencies/type families, for having different output
-    -- types? I.e., something like:
-    -- class ... => ProdType a out | a -> out  -- output type depends on a
-    --     extractArgs :: a -> out
-    -- So, for B:
-    --     extractArgs :: B -> Bool  -- For a 2D vec, this could be (Int, Int)
-    --     extractArgs (B b) = b
-
-    -- type OutType a ::
-
-    -- | We need to be able to get the name of the constructor.
-    consName :: a -> String
-
-    args :: a -> ConsArgs a
-
--- | Supported types as constructors.
-data TypeRepr :: * -> * where
-    TBool :: TypeRepr Bool
-    TInt8 :: TypeRepr Int8
-
-    -- To support nested product types.
-    TProdType :: (ProdType s) => s -> TypeRepr s
-
-type ConsArgs a = [ConsArg]
-
--- How does this type work? How can we define Enum/Bounded
--- instances for it? (Which we would need to generate all
--- possible arguments).
-data ConsArg = forall a . (Bounded a, Enum a) =>
-    ConsArg
-        (TypeRepr a)  -- ^ Type of argument
-        a             -- ^ Value of argument
+-- | Representation of a case-of expression for partition patterns.
+hmergePart :: (Show a, Show b, Partable p a)
+    => HExp a           -- ^ Scrutinee
+    -> [(p a, HExp b)]  -- ^ List of matches (partition -> body)
+    -> HExp b
+hmergePart = HMergePart
 
 --
 -- * Misc
@@ -260,8 +211,6 @@ data ConsArg = forall a . (Bounded a, Enum a) =>
 
 serialize :: Show a => HExp a -> String
 serialize = \case
-    HVar s -> s
-
     HVal v -> show v
 
     HFby v e -> "(" <> show v <> " fby " <> serialize e <> ")"
