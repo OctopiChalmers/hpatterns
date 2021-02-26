@@ -38,6 +38,11 @@ data HExp a where
 
     HVar :: String -> HExp a
 
+    HCons1
+        :: String  -- ^ Constructor name
+        -> HExp a  -- ^ Variable (should always be a HPVar (???))
+        -> HExp a
+
     -- Representation of a case-of expression with a single branch.
     -- TODO: In future, expand to two branches (which can then
     --       model multiple branches).
@@ -47,15 +52,22 @@ data HExp a where
                    -- the scrutinee.
         -> HExp b
 
+    HPVar :: HExp a
+
     HAdd :: HExp a -> HExp a -> HExp a
     HMul :: HExp a -> HExp a -> HExp a
+
+    HNeg :: HExp a -> HExp a
+
+    HEq  :: Show a =>
+        HExp a -> HExp a -> HExp Bool
 deriving instance Show a => Show (HExp a)
 
 -- | Definition of numeric operators on HExps.
 instance Num a => Num (HExp a) where
-    n1 + n2       = HAdd n1 n2
-    n1 * n2       = HMul n1 n2
-    fromInteger n = HVal $ fromInteger n
+    e1 + e2       = HAdd e1 e2
+    e1 * e2       = HMul e1 e2
+    fromInteger e = HVal $ fromInteger e
     -- abs n         = HAbs n
     -- signum c      = error "TODO"
     -- negate c      = HNeg c
@@ -64,8 +76,40 @@ instance Num a => Num (HExp a) where
 -- * Patterns for product types
 --
 
+case1 ::
+    forall a b .
+    ( ProdType a
+    , Show a
+    )
+    => a
+    -- ^ Scrutinee. Might make more sense as an HExp a, but this is
+    -- simpler for now.
+
+    -> (HExp a -> HExp b)
+    -- ^ This function must be representable in the expression language.
+    -- Also, we make the assumption that the argument to the function is
+    -- exactly a HPVar, even though is not visible in this type (yet?)
+    -- TODO: How to ensure this via types?
+
+    -> HExp b
+case1 scrut f = HCase theCons (f theVar)
+  where
+    theVar :: HExp a
+    theVar = case args scrut of
+        [_] -> HPVar
+        _ -> error "lololol"
+
+    theCons :: HExp a
+    theCons = HCons1 (consName scrut) HPVar
+
+newtype C = C Int8
+    deriving (Show)
+instance ProdType C where
+    consName _ = "C"
+    args (C n) = [ConsArg TInt8 n]
+
 newtype B = B Bool
-    deriving (Show, Bounded, Enum)
+    deriving (Show)
 instance ProdType B where
     consName :: B -> String
     consName _ = "B"
@@ -75,7 +119,7 @@ instance ProdType B where
 
 -- Stolen/"inspired" from "Compiling an Haskell EDSL to C" by Dedden, F.H. 2018
 -- | Class for representing product types; single constructor only for now.
-class (Bounded a, Enum a) => ProdType a where
+class ProdType a where
     -- | We need to be able to get the name of the constructor.
     consName :: a -> String
 
@@ -91,7 +135,7 @@ data TypeRepr :: * -> * where
 
 -- We use this to model heterogenous lists.
 type ConsArgs a = [ConsArg]
-data ConsArg = forall a . (Bounded a, Enum a) =>
+data ConsArg = forall a . Show a =>
     ConsArg
         (TypeRepr a)  -- ^ Type of argument
         a             -- ^ Value of argument
@@ -187,7 +231,7 @@ instance Partable Identity () where
     partition = Identity
 
 --
--- * Combinators
+-- * Combinators and primitives
 --
 
 -- | Lift a value into an expression.
@@ -204,6 +248,9 @@ hmergePart :: (Show a, Show b, Partable p a)
     -> [(p a, HExp b)]  -- ^ List of matches (partition -> body)
     -> HExp b
 hmergePart = HMergePart
+
+hnot :: HExp a -> HExp a
+hnot = HNeg
 
 --
 -- * Misc

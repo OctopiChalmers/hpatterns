@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TypeApplications #-}
 
 module Examples where
@@ -7,6 +8,7 @@ import Data.Int (Int8)
 
 import HExp
 
+-- Test programs for partition patterns.
 
 testSign :: Float -> HExp Int
 testSign x = hval x `hmatchPart` inspect
@@ -47,3 +49,16 @@ testSign2 = hmatchPart @Int8 (HVar "x") inspect
         Pos  -> 1
         Neg  -> -1
         Zero -> 0
+
+-- Test programs for product type patterns
+
+ptTest1 :: HExp Bool
+ptTest1 = case1 (B True) inspect
+  where
+    inspect = \case
+        HPVar -> hnot HPVar
+
+-- ptTest2 :: HExp Int8 -> HExp Int8
+-- ptTest2 e = case1 e inspect
+--   where
+--     inspect HPVar = HPVar + hval 1
