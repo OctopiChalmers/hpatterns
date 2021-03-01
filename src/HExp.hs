@@ -9,6 +9,7 @@
 {-# LANGUAGE MultiParamTypeClasses  #-}
 {-# LANGUAGE ScopedTypeVariables    #-}
 {-# LANGUAGE StandaloneDeriving     #-}
+{-# LANGUAGE TupleSections          #-}
 {-# LANGUAGE TypeApplications       #-}
 {-# LANGUAGE TypeFamilies           #-}
 {-# LANGUAGE UndecidableInstances   #-}
@@ -18,6 +19,7 @@ module HExp where
 import Data.Char (isAscii)
 import Data.Functor.Identity (Identity (Identity))
 import Data.Int (Int8)
+import Data.Proxy (Proxy (..))
 
 import qualified Data.List
 import qualified Control.Monad.Trans.State as ST
@@ -39,14 +41,17 @@ data HExp a where
 
     HCase :: (Show a, Partable p a, ProdType a)
         => HExp a
-        -- -> [((p a, a), HExp b)]
         -> [(PartCons p a, HExp b)]
         -> HExp b
 
-    -- HPartCons :: (Show a, Partable p a, ProdType a)
-    --     => p a
-    --     -> a
-    --     -> HExp a
+    HCase0 ::
+        ( Show a
+        , Partable p a
+        -- , ProdType a
+        )
+        => HExp a
+        -> [(p a, HExp b)]
+        -> HExp b
 
     HPVar :: Show a => HExp a
     HVar :: Show a => String -> HExp a
@@ -60,6 +65,16 @@ data HExp a where
     HEq  :: Show a =>
         HExp a -> HExp a -> HExp Bool
 deriving instance Show a => Show (HExp a)
+
+-- Represents something like `Pos (C)`, where C is some sort of
+-- struct-like thing.
+data (Show a, Partable p a, ProdType a)
+    => PartCons p a = PartCons (p a) (HExp a)
+    deriving (Show)
+
+data (Show a, Partable p a, ProdType a)
+    => PartCons2 p a = PartCons2 (p a) [HExp a]
+    deriving (Show)
 
 -- | Definition of numeric operators on HExps.
 instance Num a => Num (HExp a) where
@@ -94,17 +109,33 @@ case1 scrut f1 f2 = HCase scrut (zip partConss bodies)
     partitions = [minBound ..]
 
     partConss :: [PartCons p a]
-    partConss = map (`PartCons` undefined ) partitions
-
+    partConss = map (`PartCons` HPVar) partitions
 
     bodies :: [HExp b]
     bodies = [f1 HPVar, f2 HPVar]
 
--- Represents something like `Pos (C)`, where C is some sort of
--- struct-like thing.
-data (Show a, Partable p a, ProdType a)
-    => PartCons p a = PartCons (p a) (HExp a)
-    deriving (Show)
+case0 ::
+    forall a b p .
+    ( Show a
+    , Partable p a  -- Partitioning exists for type a
+    -- , ProdType a    -- Type a represents a product type
+    )
+    => HExp a                  -- ^ Scrutinee.
+    -> (HExp a -> HExp b)    -- ^ As many functions as there are cases.
+    -> (HExp a -> HExp b)    -- ^ As many functions as there are cases.
+    -> HExp b
+case0 scrut f1 f2 = HCase0 scrut (zip partitions [f1 HPVar, f2 HPVar])
+  where
+    partitions :: [p a]
+    partitions = [minBound ..]
+
+
+-- We use this to model heterogenous lists.
+type ConsArgs2 a = [ConsArg2]
+data ConsArg2 = forall a . Show a =>
+    ConsArg2
+        (TypeRepr a)  -- ^ Type of argument
+        (HExp a)      -- ^ Value of argument
 
 --
 -- * Patterns for product types
@@ -119,6 +150,15 @@ instance ProdType C where
     args :: C -> ConsArgs C
     args (C n) = [ConsArg TInt8 n]
 
+data Vec = Vec Int8 Int8
+    deriving (Show, Eq)
+instance ProdType Vec where
+    consName :: Vec -> String
+    consName _ = "V"
+
+    args :: Vec -> ConsArgs Vec
+    args (Vec x y) = [ConsArg TInt8 x, ConsArg TInt8 y]
+
 -- Stolen/"inspired" from "Compiling an Haskell EDSL to C" by Dedden, F.H. 2018
 -- | Class for representing product types; single constructor only for now.
 class ProdType a where
@@ -126,6 +166,10 @@ class ProdType a where
     consName :: a -> String
 
     args :: a -> ConsArgs a
+
+    -- TODO: do this more nicely with phantom types / proxy
+    numArgs :: proxy a -> Int
+    numArgs _ = length $ args (error "do not touch" :: a)
 
 -- | Supported types as constructors.
 data TypeRepr a where
