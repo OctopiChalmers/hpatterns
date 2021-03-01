@@ -52,12 +52,10 @@ testSign2 = hmatchPart @Int8 (HVar "x") inspect
 
 -- Test programs for product type patterns
 
-ptTest1 :: HExp B
-ptTest1 = case1 (B True) inspect
+combinedTest1 = case1 @C @_ @PatSign (HVar "x") pos neg
   where
-    inspect = hnot
+    pos :: Num a => HExp a -> HExp a
+    pos = (+ 1)
 
--- ptTest2 :: HExp Int8 -> HExp Int8
--- ptTest2 e = case1 e inspect
---   where
---     inspect HPVar = HPVar + hval 1
+    neg :: Num a => HExp a -> HExp a
+    neg = id

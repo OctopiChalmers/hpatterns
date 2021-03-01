@@ -37,26 +37,23 @@ data HExp a where
         -> [(p a, HExp b)]  -- ^ Matches (pattern -> body)
         -> HExp b
 
-
-    HCons1
-        :: String  -- ^ Constructor name
-        -> HExp a  -- ^ Variable (should always be a HPVar (???))
-        -> HExp a
-
-    -- Representation of a case-of expression with a single branch.
-    -- TODO: In future, expand to two branches (which can then
-    --       model multiple branches).
-    HCase :: (Show a, ProdType a)
-        => HExp a  -- ^ Scrutinee
-        -> HExp b  -- ^ RHS body; uses PVar to refer to components of
-                   -- the scrutinee.
+    HCase :: (Show a, Partable p a, ProdType a)
+        => HExp a
+        -- -> [((p a, a), HExp b)]
+        -> [(PartCons p a, HExp b)]
         -> HExp b
+
+    -- HPartCons :: (Show a, Partable p a, ProdType a)
+    --     => p a
+    --     -> a
+    --     -> HExp a
 
     HPVar :: Show a => HExp a
     HVar :: Show a => String -> HExp a
 
     HAdd :: HExp a -> HExp a -> HExp a
     HMul :: HExp a -> HExp a -> HExp a
+    HGt  :: HExp Int8 -> HExp Int8 -> HExp Bool
 
     HNeg :: HExp a -> HExp a
 
@@ -74,50 +71,51 @@ instance Num a => Num (HExp a) where
     -- negate c      = HNeg c
 
 --
+-- * Case
+--
+
+case1 ::
+    forall a b p .
+    ( Show a
+    , Partable p a  -- Partitioning exists for type a
+    , ProdType a    -- Type a represents a product type
+    )
+    => HExp a
+
+    -- The ordering and amount of these functions is hard-coded for the moment,
+    -- and the connection between each function and which partition it
+    -- corresponds to is arbitrary.
+    -> (HExp a -> HExp b)
+    -> (HExp a -> HExp b)
+    -> HExp b
+case1 scrut f1 f2 = HCase scrut (zip partConss bodies)
+  where
+    parts :: [p a]
+    parts = [minBound ..]
+
+    partConss :: [PartCons p a]
+    partConss = map (`PartCons` scrut) parts
+
+    bodies :: [HExp b]
+    bodies = [f1 scrut, f2 scrut]
+
+-- Represents something like `Pos (C)`, where C is some sort of
+-- struct-like thing.
+data (Show a, Partable p a, ProdType a)
+    => PartCons p a = PartCons (p a) (HExp a)
+    deriving (Show)
+
+--
 -- * Patterns for product types
 --
 
--- | Create a case-of expression, with a product type scrutinee.
-case1 ::
-    forall a b .
-    ( ProdType a
-    , Show a
-    )
-    => a
-    -- ^ Scrutinee. Might make more sense as an HExp a, but this is
-    -- simpler for now.
-
-    -> (HExp a -> HExp b)
-    -- ^ This function must be representable in the expression language.
-    -- Also, we make the assumption that the argument to the function is
-    -- exactly a HPVar, even though is not visible in this type (yet?)
-    -- TODO: How to ensure this via types?
-
-    -> HExp b
-case1 scrut f = HCase theCons (f theVar)
-  where
-    theVar :: HExp a
-    theVar = case args scrut of
-        [_] -> HPVar
-        _ -> error "lololol"
-
-    theCons :: HExp a
-    theCons = HCons1 (consName scrut) HPVar
-
 newtype C = C Int8
-    deriving (Show)
+    deriving (Show, Eq, Ord, Num)
 instance ProdType C where
+    consName :: C -> String
     consName _ = "C"
+    args :: C -> ConsArgs C
     args (C n) = [ConsArg TInt8 n]
-
-newtype B = B Bool
-    deriving (Show)
-instance ProdType B where
-    consName :: B -> String
-    consName _ = "B"
-
-    args :: B -> ConsArgs B
-    args (B b) = [ConsArg TBool b]
 
 -- Stolen/"inspired" from "Compiling an Haskell EDSL to C" by Dedden, F.H. 2018
 -- | Class for representing product types; single constructor only for now.
@@ -192,7 +190,7 @@ hmatchPart e f = hmergePart e branches
     branches = zip pats bodies
 
 -- Consider rewriting as an GADT?
-data Num a => PatSign a = Pos | Zero | Neg
+data Num a => PatSign a = Pos | Neg | Zero
     deriving (Bounded, Enum, Show)
 
 instance (Ord a, Num a) => Partable PatSign a where
@@ -269,8 +267,6 @@ hnot = HNeg
 -- Uses only one variable name for now.
 rename :: Show a => HExp a -> HExp a
 rename exp = case exp of
-    HCase scrut body -> HCase (rename scrut) (rename body)
-    HCons1 name HPVar -> HCons1 name (HVar varName)
     HPVar -> HVar varName
 
     HAdd e1 e2 -> HAdd (rename e1) (rename e2)
@@ -314,14 +310,6 @@ genC exp = case exp of
             $ "switch (" <> scrutC <> ")\n"
             <> "{\n"
             <> Data.List.intercalate "\nbreak;\n" cases
-            <> "}\n"
-    HCase (HCons1 consName (HVar varName)) body -> do
-        let preface = "int " <> varName <> ";\n"
-        bodyC <- genC body
-        pure $ preface
-            <> "switch (" <> varName <> ")\n"
-            <> "{\n"
-            <> "    default: (" <> bodyC <> ");\n"
             <> "}\n"
     HNeg e -> ("-" ++) <$> genC e
     HVar s -> pure s
