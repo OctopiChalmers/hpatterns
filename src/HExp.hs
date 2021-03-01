@@ -19,6 +19,7 @@ import Data.Char (isAscii)
 import Data.Functor.Identity (Identity (Identity))
 import Data.Int (Int8)
 
+import qualified Data.List
 import qualified Control.Monad.Trans.State as ST
 import qualified Data.Map as M
 
@@ -158,6 +159,9 @@ class (Bounded (p a), Enum (p a), Show (p a)) => Partable p a where
     -}
     toHExp :: p a -> HExp a
 
+    -- | The name of the type as an Enum in the generated code.
+    enumName :: p a -> String
+
     {- Essentially, what it means to be a partable type f a is:
     * We have a definition of how to put all values of f a into "buckets".
       While the type a itself might not be finite, the number of buckets is.
@@ -196,6 +200,7 @@ instance (Ord a, Num a) => Partable PatSign a where
         | x > 0     = Pos
         | x < 0     = Neg
         | otherwise = Zero
+    enumName _ = "Sign"
 
 data Num a => PatParity a = Even | Odd
     deriving (Bounded, Enum, Show)
@@ -203,6 +208,7 @@ data Num a => PatParity a = Even | Odd
 instance Integral a => Partable PatParity a where
     partition :: a -> PatParity a
     partition x = if even x then Even else Odd
+    enumName _ = "Parity"
 
 data IsText a => PatAscii a = Ascii | Other
     deriving (Bounded, Enum, Show)
@@ -215,6 +221,7 @@ instance IsText String
 instance Partable PatAscii String where
     partition :: String -> PatAscii String
     partition xs = if all isAscii xs then Ascii else Other
+    enumName _ = "Ascii"
 
 -- Trivial instances for types that are already finite and enumerable
 -- TODO: We don't actually want to write like this though, types like Bool
@@ -259,7 +266,7 @@ hnot = HNeg
 
 -- | Convert HPVars into into normal HVars.
 -- Uses only one variable name for now.
-rename :: Show a =>HExp a -> HExp a
+rename :: Show a => HExp a -> HExp a
 rename exp = case exp of
     HCase scrut body -> HCase (rename scrut) (rename body)
     HCons1 name HPVar -> HCons1 name (HVar varName)
@@ -276,13 +283,43 @@ rename exp = case exp of
     HMergePart{} -> exp
 
     HVal{} -> exp
-    HPVar{} -> exp
 
     _ -> error $ "rename: unexpected constructor `" <> show exp <> "`"
   where
     varName :: String
     varName = "x"
 
+type GenC = ST.State CEnv
+newtype CEnv = CEnv
+    { cenvEnums :: M.Map String [String]  -- ^ Enum name -> constants
+    }
+data PartType = forall p a . Partable p a => PartType (p a)
+
+-- Generate '''''''C''''''''
+genC :: Show a => HExp a -> GenC String
+genC exp = case exp of
+    HVal v -> pure $ show v
+    HFby v e -> genC e >>= \ ce -> pure $ "(" <> show v <> " fby " <> ce <> ")"
+    HMergePart scrut matches -> do
+        let (k, v) = enumStrings matches
+        ST.modify (\ env -> env{ cenvEnums = insertIfNew k v (cenvEnums env) })
+
+        cases <- mapM (\ (pat, body) -> do
+            bodyC <- genC body
+            return $ "case (" <> show pat <> "): " <> bodyC) matches
+        scrutC <- genC scrut
+        pure
+            $ "switch (" <> scrutC <> ")\n"
+            <> "{"
+            <> Data.List.intercalate "," cases
+            <> "}"
+
+  where
+    insertIfNew :: Ord k => k -> v -> M.Map k v -> M.Map k v
+    insertIfNew = M.insertWith (\ _ y -> y)
+
+    enumStrings :: (Partable p a, Enum (p a)) => [(p a, b)] -> (String, [String])
+    enumStrings xs = ("PLACEHOLDER ENUM", map (show . fst) xs)
 
 serialize :: Show a => HExp a -> String
 serialize = \case
