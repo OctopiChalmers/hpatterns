@@ -36,7 +36,6 @@ data HExp a where
         -> [(p a, HExp b)]  -- ^ Matches (pattern -> body)
         -> HExp b
 
-    HVar :: String -> HExp a
 
     HCons1
         :: String  -- ^ Constructor name
@@ -53,6 +52,7 @@ data HExp a where
         -> HExp b
 
     HPVar :: HExp a
+    HVar :: String -> HExp a
 
     HAdd :: HExp a -> HExp a -> HExp a
     HMul :: HExp a -> HExp a -> HExp a
@@ -76,6 +76,7 @@ instance Num a => Num (HExp a) where
 -- * Patterns for product types
 --
 
+-- | Create a case-of expression, with a product type scrutinee.
 case1 ::
     forall a b .
     ( ProdType a
@@ -255,6 +256,33 @@ hnot = HNeg
 --
 -- * Misc
 --
+
+-- | Convert HPVars into into normal HVars.
+-- Uses only one variable name for now.
+rename :: Show a =>HExp a -> HExp a
+rename exp = case exp of
+    HCase scrut body -> HCase (rename scrut) (rename body)
+    HCons1 name HPVar -> HCons1 name (HVar varName)
+    HPVar -> HVar varName
+
+    HAdd e1 e2 -> HAdd (rename e1) (rename e2)
+    HMul e1 e2 -> HMul (rename e1) (rename e2)
+    HNeg e -> HNeg (rename e)
+    HEq e1 e2 -> HEq (rename e1) (rename e2)
+
+    -- In the future, sub-expressions in these should be inspected for
+    -- renaming also.
+    HFby{} -> exp
+    HMergePart{} -> exp
+
+    HVal{} -> exp
+    HPVar{} -> exp
+
+    _ -> error $ "rename: unexpected constructor `" <> show exp <> "`"
+  where
+    varName :: String
+    varName = "x"
+
 
 serialize :: Show a => HExp a -> String
 serialize = \case
