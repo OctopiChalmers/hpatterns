@@ -35,9 +35,9 @@ testNot b = hval b `hmatchPart` inspect
     inspect (Identity b') = hval (not b')
 
 testUnit :: String -> HExp Bool
-testUnit s = hmatchPart @() (HVar s) inspect
+testUnit s = hmatchPart (HVar s) inspect
   where
-    inspect :: Identity () -> HExp Bool
+    inspect :: Identity Bool -> HExp Bool
     inspect _ = hval True
 
 -- Take some variable?
@@ -52,11 +52,10 @@ testSign2 = hmatchPart @Int8 (HVar "x") inspect
 
 -- Test programs for product type patterns
 
-ptTest1 :: HExp Bool
+ptTest1 :: HExp B
 ptTest1 = case1 (B True) inspect
   where
-    inspect = \case
-        HPVar -> hnot HPVar
+    inspect = hnot
 
 -- ptTest2 :: HExp Int8 -> HExp Int8
 -- ptTest2 e = case1 e inspect

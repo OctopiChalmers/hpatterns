@@ -52,8 +52,8 @@ data HExp a where
                    -- the scrutinee.
         -> HExp b
 
-    HPVar :: HExp a
-    HVar :: String -> HExp a
+    HPVar :: Show a => HExp a
+    HVar :: Show a => String -> HExp a
 
     HAdd :: HExp a -> HExp a -> HExp a
     HMul :: HExp a -> HExp a -> HExp a
@@ -133,7 +133,8 @@ data TypeRepr :: * -> * where
     TInt8 :: TypeRepr Int8
 
     -- To support nested product types.
-    TProdType :: (ProdType s) => s -> TypeRepr s
+    -- TProdType :: (ProdType s) => s -> TypeRepr s
+deriving instance Show (TypeRepr a)
 
 -- We use this to model heterogenous lists.
 type ConsArgs a = [ConsArg]
@@ -160,7 +161,7 @@ class (Bounded (p a), Enum (p a), Show (p a)) => Partable p a where
     toHExp :: p a -> HExp a
 
     -- | The name of the type as an Enum in the generated code.
-    enumName :: p a -> String
+    enumName :: String
 
     {- Essentially, what it means to be a partable type f a is:
     * We have a definition of how to put all values of f a into "buckets".
@@ -200,7 +201,7 @@ instance (Ord a, Num a) => Partable PatSign a where
         | x > 0     = Pos
         | x < 0     = Neg
         | otherwise = Zero
-    enumName _ = "Sign"
+    enumName = "Sign"
 
 data Num a => PatParity a = Even | Odd
     deriving (Bounded, Enum, Show)
@@ -208,7 +209,7 @@ data Num a => PatParity a = Even | Odd
 instance Integral a => Partable PatParity a where
     partition :: a -> PatParity a
     partition x = if even x then Even else Odd
-    enumName _ = "Parity"
+    enumName = "Parity"
 
 data IsText a => PatAscii a = Ascii | Other
     deriving (Bounded, Enum, Show)
@@ -221,7 +222,7 @@ instance IsText String
 instance Partable PatAscii String where
     partition :: String -> PatAscii String
     partition xs = if all isAscii xs then Ascii else Other
-    enumName _ = "Ascii"
+    enumName = "Ascii"
 
 -- Trivial instances for types that are already finite and enumerable
 -- TODO: We don't actually want to write like this though, types like Bool
@@ -293,6 +294,7 @@ type GenC = ST.State CEnv
 newtype CEnv = CEnv
     { cenvEnums :: M.Map String [String]  -- ^ Enum name -> constants
     }
+runGenC x = ST.evalState x (CEnv M.empty)
 data PartType = forall p a . Partable p a => PartType (p a)
 
 -- Generate '''''''C''''''''
@@ -310,16 +312,31 @@ genC exp = case exp of
         scrutC <- genC scrut
         pure
             $ "switch (" <> scrutC <> ")\n"
-            <> "{"
-            <> Data.List.intercalate "," cases
-            <> "}"
+            <> "{\n"
+            <> Data.List.intercalate "\nbreak;\n" cases
+            <> "}\n"
+    HCase (HCons1 consName (HVar varName)) body -> do
+        let preface = "int " <> varName <> ";\n"
+        bodyC <- genC body
+        pure $ preface
+            <> "switch (" <> varName <> ")\n"
+            <> "{\n"
+            <> "    default: (" <> bodyC <> ");\n"
+            <> "}\n"
+    HNeg e -> ("-" ++) <$> genC e
+    HVar s -> pure s
 
   where
     insertIfNew :: Ord k => k -> v -> M.Map k v -> M.Map k v
     insertIfNew = M.insertWith (\ _ y -> y)
 
-    enumStrings :: (Partable p a, Enum (p a)) => [(p a, b)] -> (String, [String])
-    enumStrings xs = ("PLACEHOLDER ENUM", map (show . fst) xs)
+enumStrings ::
+    forall a b p .
+    Partable p a
+    => [(p a, b)]
+    -> (String, [String])
+-- enumStrings xs = (enumName @(p a), map (show . fst) xs)
+enumStrings xs = ("PLACEHOLDER", map (show . fst) xs)
 
 serialize :: Show a => HExp a -> String
 serialize = \case
