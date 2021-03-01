@@ -90,14 +90,15 @@ case1 ::
     -> HExp b
 case1 scrut f1 f2 = HCase scrut (zip partConss bodies)
   where
-    parts :: [p a]
-    parts = [minBound ..]
+    partitions :: [p a]
+    partitions = [minBound ..]
 
     partConss :: [PartCons p a]
-    partConss = map (`PartCons` scrut) parts
+    partConss = map (`PartCons` undefined ) partitions
+
 
     bodies :: [HExp b]
-    bodies = [f1 scrut, f2 scrut]
+    bodies = [f1 HPVar, f2 HPVar]
 
 -- Represents something like `Pos (C)`, where C is some sort of
 -- struct-like thing.
@@ -114,6 +115,7 @@ newtype C = C Int8
 instance ProdType C where
     consName :: C -> String
     consName _ = "C"
+
     args :: C -> ConsArgs C
     args (C n) = [ConsArg TInt8 n]
 
@@ -126,7 +128,7 @@ class ProdType a where
     args :: a -> ConsArgs a
 
 -- | Supported types as constructors.
-data TypeRepr :: * -> * where
+data TypeRepr a where
     TBool :: TypeRepr Bool
     TInt8 :: TypeRepr Int8
 
