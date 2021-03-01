@@ -47,7 +47,6 @@ data HExp a where
     HCase0 ::
         ( Show a
         , Partable p a
-        -- , ProdType a
         )
         => HExp a
         -> [(p a, HExp b)]
@@ -56,12 +55,13 @@ data HExp a where
     HPVar :: Show a => HExp a
     HVar :: Show a => String -> HExp a
 
-    HAdd :: HExp a -> HExp a -> HExp a
-    HMul :: HExp a -> HExp a -> HExp a
-    HGt  :: HExp Int8 -> HExp Int8 -> HExp Bool
+    HAdd :: Num a => HExp a -> HExp a -> HExp a
+    HMul :: Num a => HExp a -> HExp a -> HExp a
 
     HNeg :: HExp a -> HExp a
 
+    HGt  :: (Show a, Num a) =>
+        HExp a -> HExp a -> HExp Bool
     HEq  :: Show a =>
         HExp a -> HExp a -> HExp Bool
 deriving instance Show a => Show (HExp a)
@@ -114,20 +114,6 @@ case1 scrut f1 f2 = HCase scrut (zip partConss bodies)
     bodies :: [HExp b]
     bodies = [f1 HPVar, f2 HPVar]
 
-case0 ::
-    forall a b p .
-    ( Show a
-    , Partable p a  -- Partitioning exists for type a
-    -- , ProdType a    -- Type a represents a product type
-    )
-    => HExp a                  -- ^ Scrutinee.
-    -> (HExp a -> HExp b)    -- ^ As many functions as there are cases.
-    -> (HExp a -> HExp b)    -- ^ As many functions as there are cases.
-    -> HExp b
-case0 scrut f1 f2 = HCase0 scrut (zip partitions [f1 HPVar, f2 HPVar])
-  where
-    partitions :: [p a]
-    partitions = [minBound ..]
 
 
 -- We use this to model heterogenous lists.
@@ -199,10 +185,10 @@ class (Bounded (p a), Enum (p a), Show (p a)) => Partable p a where
     -}
     partition :: a -> p a
 
-    {- | We also need to know how to represent the patterns in our
-    expression language.
+    {- | We also need to know how to represent the patterns as conditions
+    in our expression language.
     -}
-    toHExp :: p a -> HExp a
+    toHExp :: p a -> HExp Bool
 
     -- | The name of the type as an Enum in the generated code.
     enumName :: String
@@ -239,7 +225,7 @@ hmatchPart e f = hmergePart e branches
 data Num a => PatSign a = Pos | Neg | Zero
     deriving (Bounded, Enum, Show)
 
-instance (Ord a, Num a) => Partable PatSign a where
+instance (Show a, Ord a, Num a) => Partable PatSign a where
     partition :: a -> PatSign a
     partition x
         | x > 0     = Pos
@@ -247,13 +233,14 @@ instance (Ord a, Num a) => Partable PatSign a where
         | otherwise = Zero
     enumName = "Sign"
 
+    toHExp :: PatSign a -> HExp Bool
+    toHExp = \case
+        Pos -> HGt HPVar (HVal 0)
+        Neg -> HGt (HVal 0) HPVar
+        Zero -> HEq HPVar (HVal 0)
+
 data Num a => PatParity a = Even | Odd
     deriving (Bounded, Enum, Show)
-
-instance Integral a => Partable PatParity a where
-    partition :: a -> PatParity a
-    partition x = if even x then Even else Odd
-    enumName = "Parity"
 
 data IsText a => PatAscii a = Ascii | Other
     deriving (Bounded, Enum, Show)

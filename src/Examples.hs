@@ -61,14 +61,6 @@ combinedTest1 = case1 @C @_ @PatSign (HVar "x") pos neg
     -- neg :: Num a => [HExp a] -> HExp a
     neg = id
 
-case0test = case0 @Int8 @Int8 @PatSign (HVar "x") pos neg
-  where
-    -- pos :: Num a => [HExp a] -> HExp a
-    pos = (+ 1)
-
-    -- neg :: Num a => [HExp a] -> HExp a
-    neg = id
-
 -- -- why are both of these x??
 -- case x of
 --     Pos x -> ???
