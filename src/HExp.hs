@@ -20,13 +20,13 @@ data HExp a where
     HVal :: (Show a)
         => a -> HExp a
 
-    HMergePart :: forall a b p .
+    HMergePart :: forall p a b .
         ( Show a
         , Show b
         , Partable p a
         )
         => HExp a           -- ^ Scrutinee
-        -> [(p a, HExp b)]  -- ^ Matches (pattern -> body)
+        -> [(HExp Bool, HExp b)]  -- ^ Matches (pattern -> body)
         -> HExp b
 
     HCase0 :: forall a p .
@@ -84,7 +84,7 @@ class (Bounded (p a), Enum (p a), Show (p a)) => Partable p a where
     -}
 
 hmatchPart ::
-    forall a b p .
+    forall p a b .
     ( Show a
     , Show b
     , Partable p a
@@ -92,7 +92,7 @@ hmatchPart ::
     => HExp a           -- ^ Scrutinee
     -> (p a -> HExp b)  -- ^ Matching function
     -> HExp b           -- ^ Return an HMerge
-hmatchPart e f = HMergePart e branches
+hmatchPart e f = HMergePart @p e branches
   where
     pats :: [p a]
     pats = [minBound ..]
@@ -100,8 +100,8 @@ hmatchPart e f = HMergePart e branches
     bodies :: [HExp b]
     bodies = map f pats
 
-    branches :: [(p a, HExp b)]
-    branches = zip pats bodies
+    branches :: [(HExp Bool, HExp b)]
+    branches = zip (map toHExp pats) bodies
 
 data Num a => PatSign a = Pos | Neg
     deriving (Bounded, Enum, Show)
