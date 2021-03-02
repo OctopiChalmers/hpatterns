@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes    #-}
 {-# LANGUAGE DataKinds              #-}
+{-# LANGUAGE DerivingStrategies     #-}
 {-# LANGUAGE GADTs                  #-}
 {-# LANGUAGE GeneralisedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleContexts       #-}
@@ -25,7 +26,6 @@ import qualified Data.List
 import qualified Control.Monad.Trans.State as ST
 import qualified Data.Map as M
 
-
 -- | Main data type.
 data HExp a where
     HVal   ::
@@ -44,13 +44,22 @@ data HExp a where
         -> [(PartCons p a, HExp b)]
         -> HExp b
 
-    HCase0 ::
+    {- | Big trouble arises when trying to use the following type sig,
+    returning HExp b instead of HExp a:
+    @
+    HCase0 :: forall a b p . (Show a, Partable p a)
+        => HExp a
+        -> [(p a, HExp b)]
+        -> HExp b
+    @
+    -}
+    HCase0 :: forall a p .
         ( Show a
         , Partable p a
         )
         => HExp a
-        -> [(p a, HExp b)]
-        -> HExp b
+        -> [(HExp Bool, HExp a)]
+        -> HExp a
 
     HPVar :: Show a => HExp a
     HVar :: Show a => String -> HExp a
@@ -62,9 +71,7 @@ data HExp a where
 
     HGt  :: (Show a, Num a) =>
         HExp a -> HExp a -> HExp Bool
-    HEq  :: Show a =>
-        HExp a -> HExp a -> HExp Bool
-deriving instance Show a => Show (HExp a)
+deriving stock instance Show a => Show (HExp a)
 
 -- Represents something like `Pos (C)`, where C is some sort of
 -- struct-like thing.
@@ -228,32 +235,17 @@ data Num a => PatSign a = Pos | Neg | Zero
 instance (Show a, Ord a, Num a) => Partable PatSign a where
     partition :: a -> PatSign a
     partition x
-        | x > 0     = Pos
-        | x < 0     = Neg
-        | otherwise = Zero
+        | x >= 0 = Pos
+        | x < 0  = Neg
     enumName = "Sign"
 
     toHExp :: PatSign a -> HExp Bool
     toHExp = \case
         Pos -> HGt HPVar (HVal 0)
         Neg -> HGt (HVal 0) HPVar
-        Zero -> HEq HPVar (HVal 0)
 
 data Num a => PatParity a = Even | Odd
     deriving (Bounded, Enum, Show)
-
-data IsText a => PatAscii a = Ascii | Other
-    deriving (Bounded, Enum, Show)
-
--- Can we get this behaviour in some other way? I.e. "We can only instantiate
--- PatAscii with String"
-class IsText a
-instance IsText String
-
-instance Partable PatAscii String where
-    partition :: String -> PatAscii String
-    partition xs = if all isAscii xs then Ascii else Other
-    enumName = "Ascii"
 
 -- Trivial instances for types that are already finite and enumerable
 -- TODO: We don't actually want to write like this though, types like Bool
@@ -305,7 +297,6 @@ rename exp = case exp of
     HAdd e1 e2 -> HAdd (rename e1) (rename e2)
     HMul e1 e2 -> HMul (rename e1) (rename e2)
     HNeg e -> HNeg (rename e)
-    HEq e1 e2 -> HEq (rename e1) (rename e2)
 
     -- In the future, sub-expressions in these should be inspected for
     -- renaming also.

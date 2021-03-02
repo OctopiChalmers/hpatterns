@@ -19,14 +19,6 @@ testSign x = hval x `hmatchPart` inspect
         Neg  -> -1
         Zero -> 0
 
-testAscii :: String -> HExp Bool
-testAscii s1 = hval s1 `hmatchPart` inspect
-  where
-    inspect :: PatAscii String -> HExp Bool
-    inspect s = hval $ case s of
-        Ascii -> True
-        Other -> False
-
 testNot :: Bool -> HExp Bool
 testNot b = hval b `hmatchPart` inspect
   where
