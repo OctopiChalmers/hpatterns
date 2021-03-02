@@ -1,8 +1,3 @@
-{-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE StandaloneDeriving #-}
-
 module HExp where
 
 import Data.Char (isAscii)

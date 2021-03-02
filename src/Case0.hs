@@ -1,6 +1,3 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE FlexibleContexts #-}
-
 module Case0 where
 
 import qualified Control.Monad.Trans.State.Strict as St

@@ -26,11 +26,14 @@ library
 
   default-extensions:
       AllowAmbiguousTypes
+    , DerivingStrategies
+    , FlexibleInstances
+    , GADTs
     , InstanceSigs
     , LambdaCase
     , MultiParamTypeClasses
     , RankNTypes
     , ScopedTypeVariables
+    , StandaloneDeriving
     , TupleSections
     , TypeApplications
-
