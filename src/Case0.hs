@@ -63,26 +63,6 @@ case0ex = case0 @Int @PatSign (HVar "e") pos neg
     neg :: HExp Int -> HExp Int
     neg = id
 
-{- | Replace HPVars with HVars. Does not support nested case-expressions.
-TODO: Currently using the simpler (HExp a -> HExp a) type for HCase0
-should be looked into; we should be able to return some different type
-as output from a case-of.
--}
-bind0 :: forall a p . (Show a, Partable p a, Partable p Bool) => HExp a -> HExp a
-bind0 (HCase0 scrut cases) = HCase0 @a @p scrut (map bindCase cases)
-  where
-    bindCase :: (HExp Bool, HExp a) -> (HExp Bool, HExp a)
-    bindCase (cond, body) = (bind0 @Bool @p cond, bind0 @a @p body)
-bind0 HPVar = HVar "x"  -- Hardcoded
-bind0 (HVar s) = HVar s
-bind0 (HVal v) = HVal v
-bind0 (HAdd e1 e2) = HAdd (bind0 @a @p e1) (bind0 @a @p e2)
-bind0 e@(HGt e1 e2) = bindGt e -- HGt (bind0 @a @p e1) (bind0 @a @p e2)
-bind0 e = error $ "bind0: unexpected expression `" <> show e <> "`"
-
-bindGt :: HExp Bool -> HExp Bool
-bindGt (HGt ex1 ex2) = HGt (bind0 ex1) ex2
-
 --
 -- * Code generation
 --
@@ -97,28 +77,28 @@ buildAST0 e = wrapper
     fd1 = C.FunDef (C.TypeSpec C.Void) "fd1" [] [] stmts
 
     stmts :: [C.Stmt]
-    stmts = toC0 e
+    stmts = [] -- toC0 e
 
-toC0 :: Show a => HExp a -> [C.Stmt]
-toC0 (HCase0 (HVar s) cases) = init : undefined -- [cSwitch (traceShowId cases)]
-  where
-    init :: C.Stmt
-    init = C.Expr (C.InitVal (C.TypeName (C.TypeSpec C.Int)) [C.InitExpr (C.Ident s)])
+-- toC0 :: Show a => HExp a -> [C.Stmt]
+-- toC0 (HCase0 (HVar s) cases) = init : undefined -- [cSwitch (traceShowId cases)]
+--   where
+--     init :: C.Stmt
+--     init = C.Expr (C.InitVal (C.TypeName (C.TypeSpec C.Int)) [C.InitExpr (C.Ident s)])
 
-    cSwitch :: (Show a, Partable p a) => [(p a, HExp a)] -> C.Stmt
-    cSwitch cases = C.Switch (C.Ident s) (map cCase cases)
+--     cSwitch :: (Show a, Partable p a) => [(p a, HExp a)] -> C.Stmt
+--     cSwitch cases = C.Switch (C.Ident s) (map cCase cases)
 
-    cCase :: (Show a, Partable p a) => (p a, HExp a) -> C.Case
-    cCase (pa, e) = C.Case (cExp (toHExp pa)) (C.Expr (cExp e))
+--     cCase :: (Show a, Partable p a) => (p a, HExp a) -> C.Case
+--     cCase (pa, e) = C.Case (cExp (toHExp pa)) (C.Expr (cExp e))
 
-    cExp :: Show a => HExp a -> C.Expr
-    cExp e = case e of
-        HVal v -> C.Ident ("NUM" ++ show v)
-        HVar s -> C.Ident s
-        HAdd e1 e2 -> C.BinaryOp C.Add (cExp e1) (cExp e2)
-        HGt e1 e2 -> C.BinaryOp C.GT (cExp e1) (cExp e2)
-        HPVar -> error "UNEXPECTED HPVar!"
-        _ -> error $ "cExp: unexpected expression `" <> show e <> "`"
+--     cExp :: Show a => HExp a -> C.Expr
+--     cExp e = case e of
+--         HVal v -> C.Ident ("NUM" ++ show v)
+--         HVar s -> C.Ident s
+--         HAdd e1 e2 -> C.BinaryOp C.Add (cExp e1) (cExp e2)
+--         HGt e1 e2 -> C.BinaryOp C.GT (cExp e1) (cExp e2)
+--         HPVar -> error "UNEXPECTED HPVar!"
+--         _ -> error $ "cExp: unexpected expression `" <> show e <> "`"
 
 p = print . pPrint . Language.C99.Simple.translate
 
