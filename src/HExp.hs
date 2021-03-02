@@ -26,12 +26,11 @@ data HExp a where
         , Partable p a
         )
         => HExp a           -- ^ Scrutinee
-        -> [(HExp Bool, HExp b)]  -- ^ Matches (pattern -> body)
+        -> [(p a, HExp b)]  -- ^ Matches (pattern -> body)
         -> HExp b
 
-    HCase0 :: forall a p .
+    HCase0 :: forall p a .
         ( Show a
-        , Partable p a
         )
         => HExp a
         -> [(HExp Bool, HExp a)]
@@ -47,10 +46,10 @@ data HExp a where
 deriving instance Show a => Show (HExp a)
 
 -- | Definition of numeric operators on HExps.
-instance Num a => Num (HExp a) where
+instance (Show a, Num a) => Num (HExp a) where
     e1 + e2       = HAdd e1 e2
     e1 * e2       = HMul e1 e2
-    -- fromInteger e = HVal $ fromInteger e
+    fromInteger e = HVal $ fromInteger e
     -- abs n         = HAbs n
     -- signum c      = error "TODO"
     -- negate c      = HNeg c
@@ -100,8 +99,8 @@ hmatchPart e f = HMergePart @p e branches
     bodies :: [HExp b]
     bodies = map f pats
 
-    branches :: [(HExp Bool, HExp b)]
-    branches = zip (map toHExp pats) bodies
+    branches :: [(p a, HExp b)]
+    branches = zip pats bodies
 
 data Num a => PatSign a = Pos | Neg
     deriving (Bounded, Enum, Show)
