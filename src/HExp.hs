@@ -28,7 +28,10 @@ data HExp a where
         ( Show a
         )
         => HExp a
+            -- ^ Scrutinee
         -> [(HExp Bool, HExp b)]
+            -- ^ Branches. Consist of a condition (using HPVar to reference
+            -- the bound variable) and the body.
         -> HExp b
 
     HPVar :: HExp a
