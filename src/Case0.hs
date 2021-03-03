@@ -6,8 +6,6 @@ import qualified Language.C99.Simple
 import qualified Language.C99 as C99
 import qualified Language.C99.Pretty as C99.Pretty
 
-import Debug.Trace
-
 import Text.PrettyPrint.HughesPJClass (Pretty (..), pPrint)
 
 import HExp
@@ -29,15 +27,15 @@ method though, so really, it's more like this:
 >   x | 0 > x -> x
 -}
 case0 ::
-    forall a p .
+    forall p a b .
     ( Show a
     , Partable p a  -- Partitioning exists for type a
     )
     => HExp a              -- ^ Scrutinee.
-    -> (HExp a -> HExp a)  -- ^ As many functions as there are cases.
-    -> (HExp a -> HExp a)  -- ^ As many functions as there are cases.
-    -> HExp a
-case0 scrut f1 f2 = HCase0 @a scrut (zip conditions [f1 HPVar, f2 HPVar])
+    -> (HExp a -> HExp b)  -- ^ As many functions as there are cases.
+    -> (HExp a -> HExp b)  -- ^ As many functions as there are cases.
+    -> HExp b
+case0 scrut f1 f2 = HCase0 scrut (zip conditions [f1 HPVar, f2 HPVar])
   where
     partitions :: [p a]
     partitions = [minBound ..]
@@ -46,13 +44,12 @@ case0 scrut f1 f2 = HCase0 @a scrut (zip conditions [f1 HPVar, f2 HPVar])
     conditions = map toHExp partitions
 
 {- | Example program. Represents the following (sort of?):
-
 > case e of
 >   Pos x -> x + 1
 >   Neg x -> x
 -}
-case0ex :: HExp Int
-case0ex = case0 @Int @PatSign (HVar "e") pos neg
+case0ex0 :: HExp Int
+case0ex0 = case0 @PatSign (HVar "e") pos neg
   where
     pos :: HExp Int -> HExp Int
     pos = (+ 1)
@@ -60,6 +57,21 @@ case0ex = case0 @Int @PatSign (HVar "e") pos neg
     neg :: HExp Int -> HExp Int
     neg = id
 
+{- | Example program. Represents the following (sort of?):
+> case e of
+>   Pos _ -> True
+>   Neg _ -> False
+-}
+case0ex1 :: HExp Bool
+case0ex1 = case0 @PatSign (HVar "e") pos neg
+  where
+    pos :: HExp Int -> HExp Bool
+    pos _ = HVal True
+
+    neg :: HExp Int -> HExp Bool
+    neg _ = HVal False
+
+-- | Replace HPVars with HVars
 bind0 :: HExp a -> HExp a
 bind0 (HCase0 scrut cases) = HCase0 scrut (map bindCase cases)
   where
@@ -88,28 +100,28 @@ buildAST0 e = wrapper
     stmts :: [C.Stmt]
     stmts = toC0 e
 
-toC0 :: Show a => HExp a -> [C.Stmt]
-toC0 (HCase0 (HVar s) cases) = init : [cSwitch cases]
-  where
-    init :: C.Stmt
-    init = C.Expr (C.InitVal (C.TypeName (C.TypeSpec C.Int)) [C.InitExpr (C.Ident s)])
+    toC0 :: Show a => HExp a -> [C.Stmt]
+    toC0 (HCase0 (HVar s) cases) = init : [cSwitch cases]
+      where
+        init :: C.Stmt
+        init = C.Expr (C.InitVal (C.TypeName (C.TypeSpec C.Int)) [C.InitExpr (C.Ident s)])
 
-    cSwitch :: (Show a) => [(HExp Bool, HExp a)] -> C.Stmt
-    cSwitch cases = C.Switch (C.Ident s) (map cCase cases)
+        cSwitch :: (Show a) => [(HExp Bool, HExp a)] -> C.Stmt
+        cSwitch cases = C.Switch (C.Ident s) (map cCase cases)
 
-    cCase :: (Show a) => (HExp Bool, HExp a) -> C.Case
-    cCase (pa, e) = C.Case (cExp pa) (C.Expr (cExp e))
+        cCase :: (Show a) => (HExp Bool, HExp a) -> C.Case
+        cCase (pa, e) = C.Case (cExp pa) (C.Expr (cExp e))
 
-    cExp :: Show a => HExp a -> C.Expr
-    cExp e = case e of
-        HVal v -> C.Ident ("VAR" ++ show v)
-        HVar s -> C.Ident s
-        HAdd e1 e2 -> C.BinaryOp C.Add (cExp e1) (cExp e2)
-        HGt e1 e2 -> C.BinaryOp C.GT (cExp e1) (cExp e2)
-        _ -> error $ "cExp: unexpected expression `" <> show e <> "`"
+        cExp :: Show a => HExp a -> C.Expr
+        cExp e = case e of
+            HVal v -> C.Ident ("VAL_" ++ show v)
+            HVar s -> C.Ident s
+            HAdd e1 e2 -> C.BinaryOp C.Add (cExp e1) (cExp e2)
+            HGt e1 e2 -> C.BinaryOp C.GT (cExp e1) (cExp e2)
+            _ -> error $ "cExp: unexpected expression `" <> show e <> "`"
 
+expToC0 :: Language.C99.Simple.TransUnit -> IO ()
 expToC0 = print . pPrint . Language.C99.Simple.translate
 
 instance Pretty C99.TransUnit where
     pPrint = C99.Pretty.pretty
-

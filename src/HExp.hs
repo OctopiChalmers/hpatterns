@@ -24,12 +24,12 @@ data HExp a where
         -> [(p a, HExp b)]  -- ^ Matches (pattern -> body)
         -> HExp b
 
-    HCase0 :: forall p a .
+    HCase0 :: forall a b .
         ( Show a
         )
         => HExp a
-        -> [(HExp Bool, HExp a)]
-        -> HExp a
+        -> [(HExp Bool, HExp b)]
+        -> HExp b
 
     HPVar :: HExp a
     HVar :: String -> HExp a
