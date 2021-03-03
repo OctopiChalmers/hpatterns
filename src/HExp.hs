@@ -12,9 +12,6 @@ import qualified Data.Map as M
 
 -- | Main data type.
 data HExp a where
-    HVal :: (Show a)
-        => a -> HExp a
-
     HMergePart :: forall p a b .
         ( Show a
         , Show b
@@ -51,12 +48,14 @@ data HExp a where
         -> String  -- ^ Name of Field
         -> HExp b
 
-    HPVar :: HExp a
+    HNamedExp :: String -> HExp a -> HExp a
     HVar :: String -> HExp a
+    HPVar :: HExp a
 
+    -- Constructors below are visible to the user.
+    HVal :: (Show a) => a -> HExp a
     HAdd :: Num a => HExp a -> HExp a -> HExp a
     HMul :: Num a => HExp a -> HExp a -> HExp a
-
     HGt :: (Show a, Num a) => HExp a -> HExp a -> HExp Bool
 deriving instance Show a => Show (HExp a)
 

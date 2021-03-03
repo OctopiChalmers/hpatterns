@@ -119,7 +119,7 @@ case1ex1 = case1 @PatSign (HVar "e") [pos, neg]
 
 -- | Replace HPVars with HVars. Does not support nested case-expressions.
 bind1 :: HExp a -> HExp a
-bind1 (HCase0 scrut cases) = HCase0 scrut (map bindCase cases)
+bind1 (HCase0 scrut cases) = HCase0 (HNamedExp "x" scrut) (map bindCase cases)
   where
     bindCase :: (HExp Bool, HExp a) -> (HExp Bool, HExp a)
     bindCase (cond, body) = (bind1 cond, bind1 body)
@@ -145,13 +145,15 @@ buildAst1 e = wrapper
     fd1 = C.FunDef (C.TypeSpec C.Void) "fd1" [] [] stmts
 
     stmts :: [C.Stmt]
-    stmts = toC1 e
+    stmts = cStmts e
 
-    toC1 :: Show a => HExp a -> [C.Stmt]
-    toC1 (HCase0 (HVar s) cases) = init : [cSwitch cases]
+    cStmts :: Show a => HExp a -> [C.Stmt]
+    cStmts (HCase0 (HNamedExp s scrut) cases) = init : [cSwitch cases]
       where
         init :: C.Stmt
-        init = C.Expr (C.InitVal (C.TypeName (C.TypeSpec C.Int)) [C.InitExpr (C.Ident s)])
+        init = C.Expr
+            (C.InitVal (C.TypeName (C.TypeSpec C.Int))
+            [C.InitExpr $ C.AssignOp C.Assign (C.Ident s) (cExp scrut)])
 
         cSwitch :: (Show a) => [(HExp Bool, HExp a)] -> C.Stmt
         cSwitch cases = C.Switch (C.Ident s) (map cCase cases)
@@ -159,13 +161,13 @@ buildAst1 e = wrapper
         cCase :: (Show a) => (HExp Bool, HExp a) -> C.Case
         cCase (pa, e) = C.Case (cExp pa) (C.Expr (cExp e))
 
-        cExp :: Show a => HExp a -> C.Expr
-        cExp e = case e of
-            HVal v -> C.Ident ("VAL_" ++ show v)
-            HVar s -> C.Ident s
-            HAdd e1 e2 -> C.BinaryOp C.Add (cExp e1) (cExp e2)
-            HGt e1 e2 -> C.BinaryOp C.GT (cExp e1) (cExp e2)
-            _ -> error $ "cExp: unexpected expression `" <> show e <> "`"
+    cExp :: Show a => HExp a -> C.Expr
+    cExp e = case e of
+        HVal v -> C.Ident ("VAL_" ++ show v)
+        HVar s -> C.Ident s
+        HAdd e1 e2 -> C.BinaryOp C.Add (cExp e1) (cExp e2)
+        HGt e1 e2 -> C.BinaryOp C.GT (cExp e1) (cExp e2)
+        _ -> error $ "cExp: unexpected expression `" <> show e <> "`"
 
 {- | Use pretty library and pretty instance from language-c99 to print
 somewhat legit-looking C code from a language-c99-simple AST.
