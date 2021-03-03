@@ -1,3 +1,7 @@
+{- | Pointless, "Case1" has the same contents but with a more generic
+(but equally unsafe) case-function.
+-}
+
 module Case0 where
 
 import qualified Control.Monad.Trans.State.Strict as St

@@ -1,3 +1,9 @@
+{- | Some sort of case-expression representation.
+To print the C-representation of an example:
+
+@ 'printAst1' $ 'buildAst1' $ 'bind1' $ case1ex0 @
+-}
+
 module Case1 where
 
 import qualified Control.Monad.Trans.State.Strict as St
@@ -11,9 +17,14 @@ import Text.PrettyPrint.HughesPJClass (Pretty (..), pPrint)
 import HExp
 
 
-{- | Works with partitions with exactly two constructors, which will
-have exactly one argument. For example, the following can be (sort of?)
-represented:
+--
+-- * Combinators
+--
+
+
+{- | Builds an HExp representation of a basic case-expression.
+
+For example, the following can be (sort of?) represented:
 
 > case e of
 >   Pos x -> x + 1
@@ -25,6 +36,29 @@ method though, so really, it's more like this:
 > case e of
 >   x | x > 0 -> x + 1
 >   x | 0 > x -> x
+
+__Type safety:__
+
+* Assumes that the number of functions provided is the same number as
+the number of constructors for the 'Partable' type. Probably does something
+weird if this is not the case.
+
+* There is no way to explicitly specify which function to apply for which
+case. Instead, the order used for the 'Partable' constructors is the one
+given by deriving 'Enum'. The first function given to 'case1' is applied
+to the first constructor, and so on.
+
+For example, if we have the following definition for 'PatSign':
+
+> data Num a => PatSign a = Pos | Neg
+>     deriving (Bounded, Enum, Show)
+
+and the expression
+
+> case1 e [f1, f2]
+
+where @e@ is a 'PatSign' type, @f1@ would be applied to the Pos
+case, and @f2@ to the Neg case.
 -}
 case1 ::
     forall p a b .
@@ -45,7 +79,12 @@ case1 scrut fs = HCase0 scrut (zip conditions bodies)
     conditions :: [HExp Bool]
     conditions = map toHExp partitions
 
+--
+-- * Examples
+--
+
 {- | Example program. Represents the following (sort of?):
+
 > case e of
 >   Pos x -> x + 1
 >   Neg x -> x
@@ -60,6 +99,7 @@ case1ex0 = case1 @PatSign (HVar "e") [pos, neg]
     neg = id
 
 {- | Example program. Represents the following (sort of?):
+
 > case e of
 >   Pos _ -> True
 >   Neg _ -> False
@@ -73,7 +113,11 @@ case1ex1 = case1 @PatSign (HVar "e") [pos, neg]
     neg :: HExp Int -> HExp Bool
     neg _ = HVal False
 
--- | Replace HPVars with HVars
+--
+-- * Other
+--
+
+-- | Replace HPVars with HVars. Does not support nested case-expressions.
 bind1 :: HExp a -> HExp a
 bind1 (HCase0 scrut cases) = HCase0 scrut (map bindCase cases)
   where
@@ -90,8 +134,9 @@ bind1 (HGt e1 e2) = HGt (bind1 e1) (bind1 e2)
 -- * Code generation
 --
 
-buildAST1 :: Show a => HExp a -> C.TransUnit
-buildAST1 e = wrapper
+-- | Build a C AST representation of an HExp.
+buildAst1 :: Show a => HExp a -> C.TransUnit
+buildAst1 e = wrapper
   where
     wrapper :: C.TransUnit
     wrapper = C.TransUnit [] [fd1]
@@ -122,9 +167,11 @@ buildAST1 e = wrapper
             HGt e1 e2 -> C.BinaryOp C.GT (cExp e1) (cExp e2)
             _ -> error $ "cExp: unexpected expression `" <> show e <> "`"
 
-expToC1 :: Language.C99.Simple.TransUnit -> IO ()
-expToC1 = print . pPrint . Language.C99.Simple.translate
+{- | Use pretty library and pretty instance from language-c99 to print
+somewhat legit-looking C code from a language-c99-simple AST.
+-}
+printAst1 :: Language.C99.Simple.TransUnit -> IO ()
+printAst1 = print . pPrint . Language.C99.Simple.translate
 
 instance Pretty C99.TransUnit where
     pPrint = C99.Pretty.pretty
-
