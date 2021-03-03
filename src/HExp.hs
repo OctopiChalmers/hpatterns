@@ -34,6 +34,23 @@ data HExp a where
             -- the bound variable) and the body.
         -> HExp b
 
+    HCase2 :: forall a b .
+        ( ProdType a
+        , Show a
+        )
+        => HExp a  -- ^ Scrut
+        -> HExp b  -- ^ ??? and body
+        -> HExp b
+
+    -- Field access for structs.
+    HDot :: forall a b .
+        ( ProdType a
+        , Show a
+        )
+        => HExp a  -- ^ Expression of struct
+        -> String  -- ^ Name of Field
+        -> HExp b
+
     HPVar :: HExp a
     HVar :: String -> HExp a
 
@@ -51,6 +68,32 @@ instance (Show a, Num a) => Num (HExp a) where
     -- abs n         = HAbs n
     -- signum c      = error "TODO"
     -- negate c      = HNeg c
+
+--
+-- * Product type representation
+--
+
+-- Taken from "Compiling an Haskell EDSL to C" by Dedden, F.H. 2018
+-- | Class for representing product types; single constructor only for now.
+class ProdType a where
+    consName :: a -> String
+    args :: a -> ConsArgs a
+    arity :: a -> Int
+
+-- | Supported types as constructors.
+data TypeRepr a where
+    TBool :: TypeRepr Bool
+    TInt :: TypeRepr Int
+
+    -- To support nested product types.
+    -- TProdType :: (ProdType s) => s -> TypeRepr s
+
+type ConsArgs a = [ConsArg]
+data ConsArg = forall a. Show a =>
+    ConsArg
+        (TypeRepr a)  -- Type of field
+        String        -- Name of field
+        a             -- Value of field
 
 --
 -- * Case
