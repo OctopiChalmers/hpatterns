@@ -1,3 +1,7 @@
+{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeFamilies #-}
+
 module HExp where
 
 import Data.Char (isAscii)
@@ -41,8 +45,7 @@ data HExp a where
 
     -- Field access for structs.
     HDot :: forall a b .
-        ( ProdType a
-        , Show a
+        ( Show a
         )
         => HExp a  -- ^ Expression of struct
         -> String  -- ^ Name of Field
@@ -78,6 +81,18 @@ class ProdType a where
     consName :: a -> String
     args :: a -> ConsArgs a
     arity :: a -> Int
+    argNames :: [String]
+    structDef :: a -> String
+
+    default
+        structDef :: a -> String
+    structDef x =
+        "struct " <> consName x <> " {\n"
+        <> concatMap
+            (\ (ConsArg t s _) -> "    " <> showTypeRep t <> " " <> s <> ";\n")
+            (args x)
+        <> "};\n"
+
 
 -- | Supported types as constructors.
 data TypeRepr a where
@@ -86,6 +101,10 @@ data TypeRepr a where
 
     -- To support nested product types.
     -- TProdType :: (ProdType s) => s -> TypeRepr s
+
+showTypeRep :: TypeRepr a -> String
+showTypeRep TBool = "bool"
+showTypeRep TInt = "int"
 
 type ConsArgs a = [ConsArg]
 data ConsArg = forall a. Show a =>
