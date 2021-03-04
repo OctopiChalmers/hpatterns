@@ -22,7 +22,9 @@ import HExp
 --
 
 
-{- | Builds an HExp representation of a basic case-expression.
+{- | Builds an HExp representation of a basic case-expression on a sum type
+Freeloads on the Partable type class, but probably any Enum type should
+work.
 
 For example, the following can be (sort of?) represented:
 

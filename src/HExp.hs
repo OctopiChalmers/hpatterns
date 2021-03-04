@@ -25,6 +25,7 @@ data HExp a where
         -> [(p a, HExp b)]  -- ^ Matches (pattern -> body)
         -> HExp b
 
+    -- | Some sort of sum type pattern matching, see "Case1" module.
     HCase0 :: forall a b .
         ( Show a
         )
@@ -35,15 +36,16 @@ data HExp a where
             -- the bound variable) and the body.
         -> HExp b
 
+    -- | Some sort of product type pattern matching, see "Case2" module.
     HCase2 :: forall a b .
         ( ProdType a
         , Show a
         )
-        => HExp a  -- ^ Scrut
-        -> HExp b  -- ^ ??? and body
+        => HExp a  -- ^ Scrutinee.
+        -> HExp b  -- ^ Body. Uses HDot to refer to fields of the scrutinee.
         -> HExp b
 
-    -- Field access for structs.
+    -- | Field access for structs.
     HDot :: forall a b .
         ( Show a
         )
