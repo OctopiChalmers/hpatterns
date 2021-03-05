@@ -17,6 +17,7 @@ library
                      , Case2
                      , Case3
                      , Case4
+                     , Case5
   -- other-modules:
   -- other-extensions:
   build-depends:       base ^>=4.12.0.0
