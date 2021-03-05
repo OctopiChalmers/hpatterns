@@ -46,7 +46,7 @@ case2ex = case2 @Vec (HVar "e") addVecs
   where
     addVecs :: ConsArgs Vec -> HExp Int
     addVecs [ConsArg TInt x@"vecX" _, ConsArg TInt y@"vecY" _] =
-        HDot @Vec HPVar x + HDot @Vec HPVar y
+          HDot @Vec HPVar x + HDot @Vec HPVar y + HVal 99
 
 --
 -- * Other

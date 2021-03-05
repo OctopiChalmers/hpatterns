@@ -62,6 +62,11 @@ data HExp a where
     HAdd :: Num a => HExp a -> HExp a -> HExp a
     HMul :: Num a => HExp a -> HExp a -> HExp a
     HGt :: (Show a, Num a) => HExp a -> HExp a -> HExp Bool
+
+    HNeg :: Num a => HExp a -> HExp a
+    HEq :: (Show a, Ord a) => HExp a -> HExp a -> HExp Bool
+    HAnd :: HExp Bool -> HExp Bool -> HExp Bool
+    HOr :: HExp Bool -> HExp Bool -> HExp Bool
 deriving instance Show a => Show (HExp a)
 
 -- | Definition of numeric operators on HExps.
@@ -69,9 +74,9 @@ instance (Show a, Num a) => Num (HExp a) where
     e1 + e2       = HAdd e1 e2
     e1 * e2       = HMul e1 e2
     fromInteger e = HVal $ fromInteger e
+    negate c      = HNeg c
     -- abs n         = HAbs n
     -- signum c      = error "TODO"
-    -- negate c      = HNeg c
 
 --
 -- * Product type representation
