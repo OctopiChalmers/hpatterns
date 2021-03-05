@@ -34,10 +34,10 @@ case5 :: forall c a b .
     , Show c
     , Show a
     )
-    => HExp a
+    => HExp a                   -- ^ Scrutinee.
     -> [(c, HExp a -> HExp b)]  -- ^ Function for each constructor.
     -> HExp b
-case5 scrut fs = HCase0 scrut (M.elems matches) -- (zip conditions bodies)
+case5 scrut fs = HCase0 scrut (M.elems matches)
   where
     matches :: M.Map c (HExp Bool, HExp b)
     matches = go fs M.empty conditions

@@ -171,6 +171,43 @@ hmatchPart e f = HMergePart @p e branches
 data Num a => PatSign a = Pos | Neg
     deriving (Bounded, Enum, Show)
 
+-- [Patsign a, HExp a]
+-- [HExp a]
+
+-- We would like to be able to write this in _Haskell_ code:
+-- \case
+--    0 -> ...
+--    1 -> ...
+--    2 -> ...
+caseg
+    :: (HExp a -> [HExp Bool])
+    -- ^ Given a symbolic variable, return a predicate
+    -- for the different patterns
+    -- Symbolic variable, and I will give you the
+    -- predicates of the different pattern matching
+    -- ex>
+    -- (\ symvarExp -> [HGt ... , HGt ...] )
+    -- HExp Bools are like in toHExp
+    -> (Int -> HExp a -> HExp b)
+    -- ^
+    -- The second argument, tells you which are the branches for each options.
+    -- To eliminate the Int you use the trick.
+    -- THIS IS FINITE so we can apply the trick
+
+    -- And to eliminate the HExp a you use a symbolic variable.
+    -- For example:
+    -- (\case
+    --     1 -> pos
+    --     2 -> neg)
+    -- where
+    -- pos :: HExp Int -> HExp Int
+    -- pos = (+ 1)
+
+    -- neg :: HExp Int -> HExp Int
+    -- neg = id
+    -> HExp b
+caseg = undefined
+
 instance (Show a, Num a, Ord a) => Partable PatSign a where
     partition :: a -> PatSign a
     partition x
@@ -183,3 +220,15 @@ instance (Show a, Num a, Ord a) => Partable PatSign a where
     toHExp = \case
         Pos -> HGt HPVar (HVal 0)
         Neg -> HGt (HVal 0) HPVar
+
+-- casef :: [HExp a]               -- bunch of variables
+--       -> [(PatSign a, HExp a)]  -- How to map exp to Partition
+--                                 -- Predicate on an expression
+--       -> (PatSign a -> HExp b)  -- Haski code; The Trick can be applied to this
+--       -> HExp b
+-- casef = undefined
+-- casef …. (\case Pos -> … | Neg -> …)
+-- PatSign a
+--  -> (HExp a  -- symvar
+--      -> HExp b)
+-- ^ This function gives us the body for the expression (RHS)
