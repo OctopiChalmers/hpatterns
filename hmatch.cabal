@@ -18,6 +18,8 @@ library
                      , Case3
                      , Case4
                      , Case5
+
+                     , Xp
   -- other-modules:
   -- other-extensions:
   build-depends:       base ^>=4.12.0.0
