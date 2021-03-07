@@ -17,6 +17,7 @@ data Xp a where
     Add :: (Num a) =>         Xp a -> Xp a -> Xp a
     Sub :: (Num a) =>         Xp a -> Xp a -> Xp a
     Gt  :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
+    Lt  :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
     Eq  :: (Show a, Eq a) =>  Xp a -> Xp a -> Xp Bool
     And ::                    Xp Bool -> Xp Bool -> Xp Bool
 deriving stock instance Show a => Show (Xp a)
@@ -59,12 +60,19 @@ xcase var g f = Case var (zip conds bodies)
 (>.) :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
 (>.) = Gt
 
+-- | @<@ for Xp.
+(<.) :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
+(<.) = flip Gt
+
 -- | @==@ for Xp.
 (==.) :: (Show a, Eq a) => Xp a -> Xp a -> Xp Bool
 (==.) = Eq
 
 xvar :: String -> Xp a
 xvar = Var
+
+xval :: a -> Xp a
+xval = Val
 
 --
 -- * Prettyprinting
@@ -92,13 +100,12 @@ prettyXp e = case e of
     Add e1 e2 -> binOp "+" e1 e2
     Sub e1 e2 -> binOp "-" e1 e2
     Gt e1 e2  -> binOp ">" e1 e2
-    SymVar -> do
-        scrut <- envScrut <$> R.ask
-        case scrut of
-            Nothing -> error "unknown SymVar reference"
-            Just s  -> pure s
+    Eq e1 e2  -> binOp "==" e1 e2
+    SymVar -> R.asks envScrut >>= \case
+        Nothing -> error "no scrutinee variable in environment"
+        Just s  -> pure s
     Case scrut matches -> do
-        let newVar = "x"  -- hardcoded
+        let newVar = "scrut"  -- hardcoded
         let resVar = "result"
         let newEnv = Env
                 { envScrut = Just newVar
@@ -106,9 +113,11 @@ prettyXp e = case e of
                 }
         scrutStr <- prettyXp scrut
         matchesStrs <- R.local (const newEnv) (mapM prettyXpMatch matches)
-        pure $ "int " <> newVar <> " = " <> scrutStr <> ";\n"
+        pure $ "{\n"
+            <> "int " <> newVar <> " = " <> scrutStr <> ";\n"
             <> "int " <> resVar <> ";\n"
-            <> unlines matchesStrs <> "\n"
+            <> unlines matchesStrs
+            <> "}\n"
   where
     binOp :: (Show x, Show y) => String -> Xp x -> Xp y -> R.Reader Env String
     binOp opStr e1 e2 = do
@@ -120,4 +129,7 @@ prettyXp e = case e of
     prettyXpMatch (cond, body) = do
         condStr <- prettyXp cond
         bodyStr <- prettyXp body
-        pure $ "if (" <> condStr <> ") { " <> bodyStr <> " }"
+        resVar <- R.asks envRes >>= \case
+            Nothing -> error "no return variable in environment"
+            Just s -> pure s
+        pure $ "if (" <> condStr <> ") { " <> resVar <> " = " <> bodyStr <> " }"

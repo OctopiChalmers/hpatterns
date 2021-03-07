@@ -23,3 +23,18 @@ xprog1 var = xcase var f g
 
     neg :: Xp Int -> Xp Int
     neg _ = 0
+
+xprog2 :: Xp Int -> Xp String
+xprog2 var = xcase scrut conds bodies
+  where
+    scrut :: Xp Int
+    scrut = var - 12
+
+    conds :: Xp Int -> [Xp Bool]
+    conds sv = [sv >. 0, sv <. 0, sv ==. 0]
+
+    bodies :: Int -> Xp Int -> Xp String
+    bodies = \case
+        0 -> const $ xval "The number is Positive!"
+        1 -> const $ xval "The number is Negative!"
+        2 -> const $ xval "The number is Zero!"
