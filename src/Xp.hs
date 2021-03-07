@@ -15,6 +15,7 @@ data Xp a where
         -> Xp b
 
     Add :: (Num a) =>         Xp a -> Xp a -> Xp a
+    Sub :: (Num a) =>         Xp a -> Xp a -> Xp a
     Gt  :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
     Eq  :: (Show a, Eq a) =>  Xp a -> Xp a -> Xp Bool
     And ::                    Xp Bool -> Xp Bool -> Xp Bool
@@ -23,6 +24,7 @@ deriving stock instance Show a => Show (Xp a)
 instance Num a => Num (Xp a) where
     fromInteger n = Val (fromInteger n)
     e1 + e2 = Add e1 e2
+    e1 - e2 = Sub e1 e2
 
 --
 -- * Combinators
@@ -61,40 +63,61 @@ xcase var g f = Case var (zip conds bodies)
 (==.) :: (Show a, Eq a) => Xp a -> Xp a -> Xp Bool
 (==.) = Eq
 
+xvar :: String -> Xp a
+xvar = Var
+
 --
 -- * Prettyprinting
 --
 
 pPrintXp :: Show a => Xp a -> IO ()
-pPrintXp e = putStrLn $ R.runReader (prettyXp e) Nothing
+pPrintXp e = putStrLn $ R.runReader (prettyXp e) initEnv
+  where
+    initEnv :: Env
+    initEnv = Env Nothing Nothing
+
+data Env = Env
+    { envScrut :: Maybe String
+    , envRes :: Maybe String
+    }
 
 prettyXp :: forall a .
     ( Show a
     )
     => Xp a
-    -> R.Reader (Maybe String) String  -- Env stores the name of the scrutinee
-prettyXp (Var s) = pure s
-prettyXp (Val v) = pure $ show v
-prettyXp SymVar = R.ask >>= \case
-    Nothing -> error "unknown SymVar reference"
-    Just s -> pure s
-prettyXp (Case scrut matches) = do
-    let newVar = "x"  -- hardcoded
-    scrutStr <- prettyXp scrut
-    matchesStrs <- R.local (const $ Just newVar) (mapM prettyXpMatch matches)
-    pure $ "int " <> newVar <> " = " <> scrutStr <> ";\n"
-        <> unlines matchesStrs <> "\n"
+    -> R.Reader Env String  -- Env stores the name of the scrutinee
+prettyXp e = case e of
+    Var s -> pure s
+    Val v -> pure $ show v
+    Add e1 e2 -> binOp "+" e1 e2
+    Sub e1 e2 -> binOp "-" e1 e2
+    Gt e1 e2  -> binOp ">" e1 e2
+    SymVar -> do
+        scrut <- envScrut <$> R.ask
+        case scrut of
+            Nothing -> error "unknown SymVar reference"
+            Just s  -> pure s
+    Case scrut matches -> do
+        let newVar = "x"  -- hardcoded
+        let resVar = "result"
+        let newEnv = Env
+                { envScrut = Just newVar
+                , envRes   = Just resVar
+                }
+        scrutStr <- prettyXp scrut
+        matchesStrs <- R.local (const newEnv) (mapM prettyXpMatch matches)
+        pure $ "int " <> newVar <> " = " <> scrutStr <> ";\n"
+            <> "int " <> resVar <> ";\n"
+            <> unlines matchesStrs <> "\n"
   where
-    prettyXpMatch :: (Xp Bool, Xp a) -> R.Reader (Maybe String) String
+    binOp :: (Show x, Show y) => String -> Xp x -> Xp y -> R.Reader Env String
+    binOp opStr e1 e2 = do
+        e1Str <- prettyXp e1
+        e2Str <- prettyXp e2
+        pure $ unwords [e1Str, opStr, e2Str]
+
+    prettyXpMatch :: (Xp Bool, Xp a) -> R.Reader Env String
     prettyXpMatch (cond, body) = do
         condStr <- prettyXp cond
         bodyStr <- prettyXp body
         pure $ "if (" <> condStr <> ") { " <> bodyStr <> " }"
-prettyXp (Add e1 e2) = do
-    e1Str <- prettyXp e1
-    e2Str <- prettyXp e2
-    pure $ e1Str <> " + " <> e2Str
-prettyXp (Gt e1 e2) = do
-    e1Str <- prettyXp e1
-    e2Str <- prettyXp e2
-    pure $ e1Str <> " > " <> e2Str

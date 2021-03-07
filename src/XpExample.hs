@@ -4,8 +4,8 @@ import Xp
 
 
 -- | Increment by 1 for positive values, return 0 otherwise.
-xprog1 :: Xp Int
-xprog1 = xcase (3 + 4) f g
+xprog1 :: Xp Int -> Xp Int
+xprog1 var = xcase var f g
   where
     f :: Xp Int -> [Xp Bool]
     f sv =
