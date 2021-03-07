@@ -4,6 +4,8 @@ data Xp a where
     Val :: a -> Xp a
     SymVar :: Xp a
 
+    Case :: [(Xp Bool, Xp a)] -> Xp a
+
     Add :: Num a => Xp a -> Xp a -> Xp a
     Gt :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
     And :: Xp Bool -> Xp Bool -> Xp Bool
@@ -20,7 +22,23 @@ xcase :: forall a b .
     => (Xp a -> [Xp Bool])
     -> (Int -> Xp a -> Xp b)
     -> Xp b
-xcase = undefined
+xcase g f = Case (zip conds bodies)
+  where
+    conds :: [Xp Bool]
+    conds = g SymVar
+
+    bodies :: [Xp b]
+    bodies = aTrick (length conds) f
+
+aTrick :: forall a b .
+       Int
+    -> (Int -> Xp a -> Xp b)
+    -> [Xp b]
+aTrick n f = map ($ SymVar) bodies
+  where
+    bodies :: [Xp a -> Xp b]
+    bodies = map f [0 .. n]
+
 
 -- | Increment by 1 for positive values, return 0 otherwise.
 xprog1 :: Xp Int
