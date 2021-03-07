@@ -35,7 +35,7 @@ instance Num a => Num (Xp a) where
 xcase :: forall a b .
     ( Show a
     )
-    => Xp a
+    => Xp a  -- TODO: Document paramenters
     -> (Xp a -> [Xp Bool])
     -> (Int -> Xp a -> Xp b)
     -> Xp b
@@ -62,7 +62,7 @@ xcase var g f = Case var (zip conds bodies)
 
 -- | @<@ for Xp.
 (<.) :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
-(<.) = flip Gt
+(<.) = Lt
 
 -- | @==@ for Xp.
 (==.) :: (Show a, Eq a) => Xp a -> Xp a -> Xp Bool
@@ -93,13 +93,14 @@ prettyXp :: forall a .
     ( Show a
     )
     => Xp a
-    -> R.Reader Env String  -- Env stores the name of the scrutinee
+    -> R.Reader Env String
 prettyXp e = case e of
     Var s -> pure s
     Val v -> pure $ show v
     Add e1 e2 -> binOp "+" e1 e2
     Sub e1 e2 -> binOp "-" e1 e2
     Gt e1 e2  -> binOp ">" e1 e2
+    Lt e1 e2  -> binOp "<" e1 e2
     Eq e1 e2  -> binOp "==" e1 e2
     SymVar -> R.asks envScrut >>= \case
         Nothing -> error "no scrutinee variable in environment"
