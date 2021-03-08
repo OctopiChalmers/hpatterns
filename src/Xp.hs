@@ -42,9 +42,16 @@ instance Num a => Num (Xp a) where
 xcase :: forall a b .
     ( Show a
     )
-    => Xp a  -- TODO: Document paramenters
+    => Xp a
+    -- ^ This will be the scrutinee.
     -> (Xp a -> [Xp Bool])
+    -- ^ Function which, given a symbolic variable, returns a predicate for
+    -- each branch of the case-expression.
     -> (Int -> Xp a -> Xp b)
+    -- ^ Function which, given an index, returns a function which can be
+    -- applied to the scrutinee to produce the body of a branch in the
+    -- case expression. The index indicates which of the predicates to
+    -- match against.
     -> Xp b
 xcase var condFun bodyFun = Case var (zip conds bodies)
   where

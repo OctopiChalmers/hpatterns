@@ -3,6 +3,9 @@ module XpExample where
 import Xp
 
 
+printProg :: Show a => Xp a -> IO ()
+printProg = pPrintXp
+
 -- | Increment by 1 for positive values, return 0 otherwise.
 xprog1 :: Xp Int -> Xp Int
 xprog1 var = xcase var f g
@@ -24,11 +27,11 @@ xprog1 var = xcase var f g
     neg :: Xp Int -> Xp Int
     neg _ = 0
 
-xprog2 :: Xp Int -> Xp String
-xprog2 var = xcase scrut conds bodies
+xprog2 :: Xp String
+xprog2 = xcase scrut conds bodies
   where
     scrut :: Xp Int
-    scrut = var - 12
+    scrut = xvar "scrutinee" - 12
 
     conds :: Xp Int -> [Xp Bool]
     conds sv = [sv >. 0, sv <. 0, sv ==. 0]
