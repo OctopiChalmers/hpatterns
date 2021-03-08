@@ -98,8 +98,8 @@ xval = Val
 -- * Prettyprinting
 --
 
-pPrintXp :: Show a => Xp a -> IO ()
-pPrintXp e = putStrLn $ R.runReader (prettyXp e) initEnv
+showXp :: Show a => Xp a -> String
+showXp e = R.runReader (prettyXp e) initEnv
   where
     initEnv :: Env
     initEnv = Env Nothing Nothing
