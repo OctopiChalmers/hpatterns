@@ -15,17 +15,24 @@ data Xp a where
         -> Xp b
 
     Add :: (Num a) =>         Xp a -> Xp a -> Xp a
+    Mul :: (Num a) =>         Xp a -> Xp a -> Xp a
     Sub :: (Num a) =>         Xp a -> Xp a -> Xp a
+
     Gt  :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
     Lt  :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
     Eq  :: (Show a, Eq a) =>  Xp a -> Xp a -> Xp Bool
+    Not ::                    Xp Bool -> Xp Bool
     And ::                    Xp Bool -> Xp Bool -> Xp Bool
+    Or  ::                    Xp Bool -> Xp Bool -> Xp Bool
 deriving stock instance Show a => Show (Xp a)
 
 instance Num a => Num (Xp a) where
+    (+) = Add
+    (*) = Mul
+    (-) = Sub
     fromInteger n = Val (fromInteger n)
-    e1 + e2 = Add e1 e2
-    e1 - e2 = Sub e1 e2
+    abs = error "not implemented"
+    signum = error "not implemented"
 
 --
 -- * Combinators
@@ -39,34 +46,40 @@ xcase :: forall a b .
     -> (Xp a -> [Xp Bool])
     -> (Int -> Xp a -> Xp b)
     -> Xp b
-xcase var g f = Case var (zip conds bodies)
+xcase var condFun bodyFun = Case var (zip conds bodies)
   where
     conds :: [Xp Bool]
-    conds = g SymVar
+    conds = condFun SymVar
 
     bodies :: [Xp b]
-    bodies = aTrick (length conds) f
+    bodies = trick (length conds) bodyFun
 
-    aTrick ::
+    trick ::
            Int
         -> (Int -> Xp a -> Xp b)
         -> [Xp b]
-    aTrick n f = map ($ SymVar) bodies
+    trick n f = map ($ SymVar) fs
       where
-        bodies :: [Xp a -> Xp b]
-        bodies = map f [0 .. n]
+        fs :: [Xp a -> Xp b]
+        fs = map f [0 .. n]
 
--- | @>@ for Xp.
 (>.) :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
 (>.) = Gt
 
--- | @<@ for Xp.
 (<.) :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
 (<.) = Lt
 
--- | @==@ for Xp.
 (==.) :: (Show a, Eq a) => Xp a -> Xp a -> Xp Bool
 (==.) = Eq
+
+(&&.) :: Xp Bool -> Xp Bool -> Xp Bool
+(&&.) = And
+
+(||.) :: Xp Bool -> Xp Bool -> Xp Bool
+(||.) = Or
+
+xnot :: Xp Bool -> Xp Bool
+xnot = Not
 
 xvar :: String -> Xp a
 xvar = Var
@@ -94,14 +107,18 @@ prettyXp :: forall a .
     )
     => Xp a
     -> R.Reader Env String
-prettyXp e = case e of
+prettyXp = \case
     Var s -> pure s
     Val v -> pure $ show v
     Add e1 e2 -> binOp "+" e1 e2
+    Mul e1 e2 -> binOp "*" e1 e2
     Sub e1 e2 -> binOp "-" e1 e2
     Gt e1 e2  -> binOp ">" e1 e2
     Lt e1 e2  -> binOp "<" e1 e2
     Eq e1 e2  -> binOp "==" e1 e2
+    And e1 e2 -> binOp "&&" e1 e2
+    Or e1 e2  -> binOp "||" e1 e2
+    Not e    -> ('!' :) <$> prettyXp e
     SymVar -> R.asks envScrut >>= \case
         Nothing -> error "no scrutinee variable in environment"
         Just s  -> pure s
