@@ -8,10 +8,11 @@ Print the C output of a program @(p :: Xp a)@ with
 module XpExample where
 
 import Xp
+import XpCompile
 
 
 printProg :: Show a => Xp a -> IO ()
-printProg = putStrLn . showXp
+printProg = putStrLn . compileXp
 
 {- | Increment by 1 for positive values, return 0 otherwise.
 

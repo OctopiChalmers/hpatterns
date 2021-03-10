@@ -20,6 +20,7 @@ library
                      , Case5
 
                      , Xp
+                     , XpCompile
                      , XpExample
   -- other-modules:
   -- other-extensions:
