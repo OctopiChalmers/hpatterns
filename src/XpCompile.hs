@@ -1,47 +1,58 @@
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE TemplateHaskell #-}
 
 module XpCompile where
 
 import qualified Control.Monad.Reader as R
 import qualified Control.Monad.State.Strict as St
-import qualified Data.List as List
 import qualified Data.Map.Strict as M
-
-import Lens.Micro.Platform
+import qualified Lens.Micro as Lens
+import qualified Lens.Micro.Mtl as Lens
 
 import Xp
 
 
 --
--- * Compilation utils.
+-- * Compilation utils
 --
+
+type Compile = R.ReaderT Name (St.State Cm)
 
 newtype Name = Name
     { unName :: String
     } deriving newtype (Show)
       deriving stock (Eq, Ord)
 
+-- | State during compilation.
 data Cm = Cm
-    { _cmCounter :: Int
-    , _cmFuns    :: [String]
+    { _cmCounter :: Int       -- ^ Seed for generating unique variables.
+    , _cmDefs    :: [String]  -- ^
     }
-makeLenses ''Cm
+
+-- ** Lenses for Cm fields
+
+cmCounter :: Lens.Lens' Cm Int
+cmCounter = Lens.lens _cmCounter (\ cm n -> cm{ _cmCounter = n })
+
+cmDefs :: Lens.Lens' Cm [String]
+cmDefs = Lens.lens _cmDefs (\ cm xs -> cm{ _cmDefs = xs })
+
+-- ** Other utilities
 
 -- | Return a unique identifier and increment the counter in state.
 freshId :: Compile Name
 freshId = do
-    newId <- ('v' :) . show <$> use cmCounter
-    modifying cmCounter (+ 1)
+    newId <- ('v' :) . show <$> Lens.use cmCounter
+    Lens.modifying cmCounter (+ 1)
     pure $ Name newId
 
-type Compile = R.ReaderT Name (St.State Cm)
-
 --
--- * Main compilation stuff.
+-- * Main compilation stuff
 --
 
+{- | Main entry point for compilation. Compile an 'Xp.Xp' program (expression)
+into its C representation.
+-}
 compile :: Show a => Xp a -> String
 compile program =
     let (code, st) :: (String, Cm) =
@@ -49,7 +60,7 @@ compile program =
         main = mainWrap code
     in mconcat
         [ "\n// Code generated from Xp program \n\n"
-        , concatMap (++ "\n") (view cmFuns st)
+        , concatMap (++ "\n") (Lens.view cmDefs st)
         , main
         ]
   where
@@ -59,7 +70,7 @@ compile program =
     initCm :: Cm
     initCm = Cm
         { _cmCounter = 0
-        , _cmFuns = []
+        , _cmDefs = []
         }
 
     mainWrap :: String -> String
@@ -71,6 +82,9 @@ compile program =
         , "}\n"
         ]
 
+{- | Compile an expression into its C representation. Needed function
+definitions are generated as needed and added to the compilation state.
+-}
 cXp :: Show a => Xp a -> Compile String
 cXp = \case
     Val v -> pure $ show v
@@ -100,7 +114,15 @@ cXp = \case
         s2 <- cXp e2
         pure $ mconcat ["(", s1, " ", op, " ", s2, ")"]
 
-newCaseFun :: forall b . Show b => Name -> [(Xp Bool, Xp b)] -> Compile ()
+{- | Convert the body of a sum pattern match ('Xp.Case') to a new function
+definition, and add it to the compilation state.
+-}
+newCaseFun :: forall b .
+    ( Show b
+    )
+    => Name               -- ^ Name of function.
+    -> [(Xp Bool, Xp b)]  -- ^ Branches/matches of case-expression.
+    -> Compile ()
 newCaseFun (Name funName) matches = do
     resVar <- freshId
     matchesStr <- mapM (cMatch resVar) matches
@@ -113,7 +135,7 @@ newCaseFun (Name funName) matches = do
             , "    return ", unName resVar, ";\n"
             , "}\n"
             ]
-    modifying cmFuns (def :)
+    Lens.modifying cmDefs (def :)
   where
     cMatch :: Name -> (Xp Bool, Xp b) -> Compile String
     cMatch (Name resVar) (cond, body) = do
