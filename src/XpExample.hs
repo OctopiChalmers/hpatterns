@@ -8,11 +8,11 @@ Print the C output of a program @(p :: Xp a)@ with
 module XpExample where
 
 import Xp
-import XpCompile
+import XpCompile (compile)
 
 
 printProg :: Show a => Xp a -> IO ()
-printProg = putStrLn . compileXp
+printProg = putStrLn . compile
 
 {- | Increment by 1 for positive values, return 0 otherwise.
 
@@ -70,3 +70,7 @@ xprog2 = xcase scrut conds bodies
         0 -> const $ xval "The number is Positive!"
         1 -> const $ xval "The number is Negative!"
         2 -> const $ xval "The number is Zero!"
+
+-- | Simple nested case expressions.
+xprog3 :: Xp Int
+xprog3 = 3 + xprog1 (xprog1 2)

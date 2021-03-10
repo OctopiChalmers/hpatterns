@@ -1,13 +1,11 @@
 module Xp where
 
-import qualified Control.Monad.Trans.Reader as R
-
 
 -- | Main data type.
 data Xp a where
     Val :: a -> Xp a
     Var :: String -> Xp a
-    SymVar :: Xp a
+    SVar :: Xp a
 
     Case :: (Show a)
         => Xp a               -- ^ Scrutinee
@@ -56,7 +54,7 @@ xcase :: forall a b .
 xcase var condFun bodyFun = Case var (zip conds bodies)
   where
     conds :: [Xp Bool]
-    conds = condFun SymVar
+    conds = condFun SVar
 
     bodies :: [Xp b]
     bodies = trick (length conds) bodyFun
@@ -65,7 +63,7 @@ xcase var condFun bodyFun = Case var (zip conds bodies)
            Int
         -> (Int -> Xp a -> Xp b)
         -> [Xp b]
-    trick n f = map ($ SymVar) fs
+    trick n f = map ($ SVar) fs
       where
         fs :: [Xp a -> Xp b]
         fs = map f [0 .. n]
