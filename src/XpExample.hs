@@ -89,7 +89,10 @@ instance ProdType V where
     args (V x y) = [Field TInt "vx" (xval x), Field TInt "vy" (xval x)]
     consName = "V"
 
-xprog4 :: Xp Int
-xprog4 = xcasep @V (xval (V 5 9)) $ \case
+xprog4 :: Xp V -> Xp Int
+xprog4 vec = xcasep vec $ \case
     [Field TInt "vx" x, Field TInt "vy" y] -> x + y
 
+xprog5 :: Xp Int
+xprog5 = xcasep @V (xval (V 5 9)) $ \case
+    [Field TInt "vx" x, Field TInt "vy" y] -> xprog1 x + xprog1 y
