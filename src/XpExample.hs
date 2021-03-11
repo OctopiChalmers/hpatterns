@@ -158,3 +158,25 @@ int main() {
 xprog5 :: Xp Int
 xprog5 = xcasep @V (xval (V 5 9)) $ \case
     [Field TInt "vx" x, Field TInt "vy" y] -> xprog1 x + xprog1 y
+
+
+-- case2 :: Xp Int -> (Partition Int -> Xp a) -> Xp a
+-- data Partition Int = Pos (Expr Int) | Neg (Expr Int)   <- Type families?
+
+-- case2 scrutiny $ \case
+--  Pos exp -> ...
+--  Neg exp -> ...`
+
+-- (\case ... ) (Pos (Var Sym))
+-- (\case ... ) (Neg (Var Sym))
+-- case2 (var :: Xp) $ \case
+--  Pos exp -> exp .+ 1
+--  Neg exp -> 0
+
+-- case :: Xp e -> (Partition e -> Xp a) -> Xp a
+
+-- case x f
+-- f (Pos (SymVar))
+-- f (Neg (SymVar))
+-- Apply to all cases, get a list of expressions:
+-- [ Sym Var .+ 1, Const 0]
