@@ -89,10 +89,72 @@ instance ProdType V where
     args (V x y) = [Field TInt "vx" (xval x), Field TInt "vy" (xval x)]
     consName = "V"
 
+{- | Sum the two fields of a vector.
+
+@
+GHCi> printProg $ xprog4 (xval (V 5 9))
+
+// Code generated from Xp program
+
+struct V {
+    int vx;
+    int vy;
+};
+
+int v0(PLACEHOLDER_TYPE scrut) {
+    PLACEHOLDER_TYPE v1 = (scrut.vx + scrut.vy);
+    return v1;
+}
+
+int main() {
+    int output = v0(V {vx = 5, vy = 9});
+    printf("Program output is: %d", output)
+    return 0;
+}
+@
+-}
 xprog4 :: Xp V -> Xp Int
 xprog4 vec = xcasep vec $ \case
     [Field TInt "vx" x, Field TInt "vy" y] -> x + y
 
+{- | Nested sum/branch matching inside product matching.
+
+@
+GHCi> printProg $ xprog5
+
+// Code generated from Xp program
+
+struct V {
+    int vx;
+    int vy;
+};
+
+int v0(PLACEHOLDER_TYPE scrut) {
+    PLACEHOLDER_TYPE v1 = (v2(scrut.vx) + v4(scrut.vy));
+    return v1;
+}
+
+int v4(int scrut) {
+    int v5;
+    if ((scrut > 0)) { v5 = (scrut + 1) }
+    if ((scrut < 0)) { v5 = 0 }
+    return v5;
+}
+
+int v2(int scrut) {
+    int v3;
+    if ((scrut > 0)) { v3 = (scrut + 1) }
+    if ((scrut < 0)) { v3 = 0 }
+    return v3;
+}
+
+int main() {
+    int output = v0(V {vx = 5, vy = 9});
+    printf("Program output is: %d", output)
+    return 0;
+}
+@
+-}
 xprog5 :: Xp Int
 xprog5 = xcasep @V (xval (V 5 9)) $ \case
     [Field TInt "vx" x, Field TInt "vy" y] -> xprog1 x + xprog1 y

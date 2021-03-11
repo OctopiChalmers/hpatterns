@@ -169,6 +169,12 @@ newCasePFun (Name funName) body = do
     Name scrutName <- R.ask
 
     let def = mconcat
+            -- TODO: Haven't properly included translation of the field type yet,
+            -- hence the placeholder.
+
+            -- Also, literal syntax for structs needs to be fixed (compound
+            -- literals); right now, a Val (V x y) will just be printed as the
+            -- Haskell representation.
             [ "int ", funName, "(PLACEHOLDER_TYPE ", scrutName, ") {\n"
             , "    PLACEHOLDER_TYPE ", unName resVar, " = ", bodyStr, ";\n"
             , "    return ", unName resVar, ";\n"
