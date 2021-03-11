@@ -89,7 +89,7 @@ definitions are generated as needed and added to the compilation state.
 cXp :: Show a => Xp a -> Compile String
 cXp = \case
     Val v -> pure $ show v
-    Var s -> pure $ show s
+    Var s -> pure $ s
     Add e1 e2 -> binOp "+" e1 e2
     Mul e1 e2 -> binOp "*" e1 e2
     Sub e1 e2 -> binOp "-" e1 e2
@@ -120,7 +120,7 @@ cXp = \case
         scrutStr <- unName <$> R.ask
         pure $ scrutStr <> "." <> s
 
-    exp -> error $ "cXp: unexpected case `" <> show exp <> "`"
+    exp -> error $ "cXp: unexpected constructor `" <> show exp <> "`"
   where
     binOp :: (Show a, Show b) => String -> Xp a -> Xp b -> Compile String
     binOp op e1 e2 = do
