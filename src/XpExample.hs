@@ -74,3 +74,22 @@ xprog2 = xcase scrut conds bodies
 -- | Simple nested case expressions.
 xprog3 :: Xp Int
 xprog3 = 3 + xprog1 (xprog1 2)
+
+--
+-- * Product type examples
+--
+
+data V = V
+    { vx :: Int
+    , vy :: Int
+    } deriving (Eq, Show)
+
+instance ProdType V where
+    absArgs = [AbsField TInt "vx", AbsField TInt "vy"]
+    args (V x y) = [Field TInt "vx" (xval x), Field TInt "vy" (xval x)]
+    consName = "V"
+
+xprog4 :: Xp Int
+xprog4 = xcasep @V (xval (V 5 9)) $ \case
+    [Field TInt "vx" x, Field TInt "vy" y] -> x + y
+
