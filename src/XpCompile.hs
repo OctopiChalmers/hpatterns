@@ -1,3 +1,7 @@
+{- | Module containing things concering compilation from Xp -> String (C code).
+Simple and naive implementation, basically just concatenating strings.
+-}
+
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE TemplateHaskell            #-}
@@ -88,7 +92,7 @@ definitions are generated as needed and added to the compilation state.
 -}
 cXp :: Show a => Xp a -> Compile String
 cXp = \case
-    Val v -> pure $ show v
+    Val v -> pure $ show v  -- TODO: `show` is insufficient for struct types.
     Var s -> pure $ s
     Add e1 e2 -> binOp "+" e1 e2
     Mul e1 e2 -> binOp "*" e1 e2
@@ -157,11 +161,14 @@ newCaseFun (Name funName) matches = do
         bodyStr <- cXp body
         pure $ mconcat ["if (", condStr, ") { ", resVar, " = ", bodyStr, " }\n"]
 
+{- | Convert the body of a product pattern match ('Xp.CaseP') to a new function
+definition, and add it to the compilation state.
+-}
 newCasePFun :: forall b .
     ( Show b
     )
-    => Name
-    -> Xp b
+    => Name        -- ^ Name of function.
+    -> Xp b        -- ^ Body of function.
     -> Compile ()
 newCasePFun (Name funName) body = do
     resVar <- freshId
