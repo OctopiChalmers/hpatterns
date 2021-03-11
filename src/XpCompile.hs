@@ -27,9 +27,12 @@ newtype Name = Name
 
 -- | State during compilation.
 data Cm = Cm
-    { _cmCounter :: Int       -- ^ Seed for generating unique variables.
-    , _cmDefs    :: [String]  -- ^ Function definitions added as necssary.
-    , _cmStructs :: M.Map Name String  -- ^ Struct definitions (name -> def)
+    { _cmCounter :: Int
+    -- ^ Seed for generating unique variables.
+    , _cmDefs    :: [String]
+    -- ^ Function definitions added as necssary.
+    , _cmStructs :: M.Map Name String
+    -- ^ Struct definitions (name of struct -> definition of struct).
     }
 $(Lens.TH.makeLenses ''Cm)
 
@@ -106,9 +109,18 @@ cXp = \case
 
     CaseP (scrut :: Xp pt) body -> do
         newStruct @pt
-        pure "CASEP"
+        funName <- freshId
+        newCasePFun funName body
+
+        scrutStr <- cXp scrut
+        pure $ mconcat [unName funName, "(", scrutStr, ")"]
 
     SVar -> unName <$> R.ask
+    SField s -> do
+        scrutStr <- unName <$> R.ask
+        pure $ scrutStr <> "." <> s
+
+    exp -> error $ "cXp: unexpected case `" <> show exp <> "`"
   where
     binOp :: (Show a, Show b) => String -> Xp a -> Xp b -> Compile String
     binOp op e1 e2 = do
@@ -145,6 +157,28 @@ newCaseFun (Name funName) matches = do
         bodyStr <- cXp body
         pure $ mconcat ["if (", condStr, ") { ", resVar, " = ", bodyStr, " }\n"]
 
+newCasePFun :: forall b .
+    ( Show b
+    )
+    => Name
+    -> Xp b
+    -> Compile ()
+newCasePFun (Name funName) body = do
+    resVar <- freshId
+    bodyStr <- cXp body
+    Name scrutName <- R.ask
+
+    let def = mconcat
+            [ "int ", funName, "(PLACEHOLDER_TYPE ", scrutName, ") {\n"
+            , "    PLACEHOLDER_TYPE ", unName resVar, " = ", bodyStr, ";\n"
+            , "    return ", unName resVar, ";\n"
+            , "}\n"
+            ]
+    Lens.Mtl.modifying cmDefs (def :)
+
+{- | Add a new structure definition to the compilation state, if it doesn't
+already exist.
+-}
 newStruct :: forall a .
     ( Show a
     , ProdType a
@@ -158,7 +192,10 @@ newStruct = do
             , concatMap ("    " ++) fieldsStr
             , "};\n"
             ]
-    Lens.Mtl.modifying cmStructs (M.insert (Name structName) def)
+    Lens.Mtl.modifying cmStructs (insertIfNew (Name structName) def)
   where
     cField :: AbsField -> String
     cField (AbsField t s) = mconcat [showType t, " ", s, ";\n"]
+
+    insertIfNew :: Ord k => k -> v -> M.Map k v -> M.Map k v
+    insertIfNew = M.insertWith (\ _ y -> y)
