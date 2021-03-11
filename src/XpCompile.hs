@@ -1,5 +1,6 @@
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE TemplateHaskell            #-}
 
 module XpCompile where
 
@@ -7,7 +8,8 @@ import qualified Control.Monad.Reader as R
 import qualified Control.Monad.State.Strict as St
 import qualified Data.Map.Strict as M
 import qualified Lens.Micro as Lens
-import qualified Lens.Micro.Mtl as Lens
+import qualified Lens.Micro.Mtl as Lens.Mtl
+import qualified Lens.Micro.TH as Lens.TH
 
 import Xp
 
@@ -26,24 +28,18 @@ newtype Name = Name
 -- | State during compilation.
 data Cm = Cm
     { _cmCounter :: Int       -- ^ Seed for generating unique variables.
-    , _cmDefs    :: [String]  -- ^
+    , _cmDefs    :: [String]  -- ^ Function definitions added as necssary.
+    , _cmStructs :: M.Map Name String  -- ^ Struct definitions (name -> def)
     }
-
--- ** Lenses for Cm fields
-
-cmCounter :: Lens.Lens' Cm Int
-cmCounter = Lens.lens _cmCounter (\ cm n -> cm{ _cmCounter = n })
-
-cmDefs :: Lens.Lens' Cm [String]
-cmDefs = Lens.lens _cmDefs (\ cm xs -> cm{ _cmDefs = xs })
+$(Lens.TH.makeLenses ''Cm)
 
 -- ** Other utilities
 
 -- | Return a unique identifier and increment the counter in state.
 freshId :: Compile Name
 freshId = do
-    newId <- ('v' :) . show <$> Lens.use cmCounter
-    Lens.modifying cmCounter (+ 1)
+    newId <- ('v' :) . show <$> Lens.Mtl.use cmCounter
+    Lens.Mtl.modifying cmCounter (+ 1)
     pure $ Name newId
 
 --
@@ -60,7 +56,8 @@ compile program =
         main = mainWrap code
     in mconcat
         [ "\n// Code generated from Xp program \n\n"
-        , concatMap (++ "\n") (Lens.view cmDefs st)
+        , concatMap (++ "\n") (M.elems (st Lens.^. cmStructs))
+        , concatMap (++ "\n") (st Lens.^. cmDefs)
         , main
         ]
   where
@@ -71,6 +68,7 @@ compile program =
     initCm = Cm
         { _cmCounter = 0
         , _cmDefs = []
+        , _cmStructs = M.empty
         }
 
     mainWrap :: String -> String
@@ -97,7 +95,7 @@ cXp = \case
     Eq  e1 e2 -> binOp "==" e1 e2
     And e1 e2 -> binOp "&&" e1 e2
     Or  e1 e2 -> binOp "||" e1 e2
-    Not e -> (\ eStr -> "(-" <> eStr <> ")") <$> cXp e
+    Not e -> ("(-" ++) . (++ ")") <$> cXp e
 
     Case scrut matches -> do
         funName <- freshId
@@ -105,6 +103,10 @@ cXp = \case
 
         scrutStr <- cXp scrut
         pure $ mconcat [unName funName, "(", scrutStr, ")"]
+
+    CaseP (scrut :: Xp pt) body -> do
+        newStruct @pt
+        pure "CASEP"
 
     SVar -> unName <$> R.ask
   where
@@ -135,10 +137,28 @@ newCaseFun (Name funName) matches = do
             , "    return ", unName resVar, ";\n"
             , "}\n"
             ]
-    Lens.modifying cmDefs (def :)
+    Lens.Mtl.modifying cmDefs (def :)
   where
     cMatch :: Name -> (Xp Bool, Xp b) -> Compile String
     cMatch (Name resVar) (cond, body) = do
         condStr <- cXp cond
         bodyStr <- cXp body
         pure $ mconcat ["if (", condStr, ") { ", resVar, " = ", bodyStr, " }\n"]
+
+newStruct :: forall a .
+    ( Show a
+    , ProdType a
+    )
+    => Compile ()
+newStruct = do
+    let structName = consName @a
+    let fieldsStr = map cField (absArgs @a)
+    let def = mconcat
+            [ "struct ", structName, " {\n"
+            , concatMap ("    " ++) fieldsStr
+            , "};\n"
+            ]
+    Lens.Mtl.modifying cmStructs (M.insert (Name structName) def)
+  where
+    cField :: AbsField -> String
+    cField (AbsField t s) = mconcat [showType t, " ", s, ";\n"]
