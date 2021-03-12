@@ -8,6 +8,7 @@ author:              Thomas Li
 maintainer:          guslithd@student.gu.se
 category:            Language
 extra-source-files:
+  README.md
 
 library
   exposed-modules:
