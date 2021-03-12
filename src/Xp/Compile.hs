@@ -1,12 +1,17 @@
-{- | Module containing things concering compilation from Xp -> String (C code).
+{- | Module containing things concering compilation from Xp to C code output.
+
 Simple and naive implementation, basically just concatenating strings.
 -}
 
 {-# LANGUAGE DerivingStrategies         #-}
+{-# LANGUAGE ExplicitForAll             #-}
+{-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TemplateHaskell            #-}
 
-module XpCompile where
+module Xp.Compile where
 
 import qualified Control.Monad.Reader as R
 import qualified Control.Monad.State.Strict as St
@@ -15,7 +20,7 @@ import qualified Lens.Micro as Lens
 import qualified Lens.Micro.Mtl as Lens.Mtl
 import qualified Lens.Micro.TH as Lens.TH
 
-import Xp
+import Xp.Core
 
 
 --

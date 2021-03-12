@@ -5,10 +5,12 @@ Print the C output of a program @(p :: Xp a)@ with
 > printProg p
 -}
 
-module XpExample where
+{-# LANGUAGE LambdaCase #-}
 
-import Xp
-import XpCompile (compile)
+module Xp.Examples where
+
+import Xp.Core
+import Xp.Compile (compile)
 
 
 printProg :: Show a => Xp a -> IO ()
@@ -26,22 +28,22 @@ if (scrut < 0) { result = 0 }
 }
 @
 -}
-xprog1 :: Xp Int -> Xp Int
-xprog1 var = xcase var conds bodies
-  where
-    conds :: Xp Int -> [Xp Bool]
-    conds sv = [sv >. 0, sv <. 0]
+-- xprog1 :: Xp Int -> Xp Int
+-- xprog1 var = xcase var conds bodies
+--   where
+--     conds :: Xp Int -> [Xp Bool]
+--     conds sv = [sv >. 0, sv <. 0]
 
-    bodies :: Int -> Xp Int -> Xp Int
-    bodies = \case
-        0 -> pos
-        1 -> neg
+--     bodies :: Int -> Xp Int -> Xp Int
+--     bodies = \case
+--         0 -> pos
+--         1 -> neg
 
-    pos :: Xp Int -> Xp Int
-    pos = (+ 1)
+--     pos :: Xp Int -> Xp Int
+--     pos = (+ 1)
 
-    neg :: Xp Int -> Xp Int
-    neg = const 0
+--     neg :: Xp Int -> Xp Int
+--     neg = const 0
 
 {- | Return a string depending on the value of the scrutinee.
 
@@ -56,24 +58,24 @@ if (scrut == 0) { result = "The number is Zero!" }
 }
 @
 -}
-xprog2 :: Xp String
-xprog2 = xcase scrut conds bodies
-  where
-    scrut :: Xp Int
-    scrut = xvar "scrutinee" - 12
+-- xprog2 :: Xp String
+-- xprog2 = xcase scrut conds bodies
+--   where
+--     scrut :: Xp Int
+--     scrut = xvar "scrutinee" - 12
 
-    conds :: Xp Int -> [Xp Bool]
-    conds sv = [sv >. 0, sv <. 0, sv ==. 0]
+--     conds :: Xp Int -> [Xp Bool]
+--     conds sv = [sv >. 0, sv <. 0, sv ==. 0]
 
-    bodies :: Int -> Xp Int -> Xp String
-    bodies = \case
-        0 -> const $ xval "The number is Positive!"
-        1 -> const $ xval "The number is Negative!"
-        2 -> const $ xval "The number is Zero!"
+--     bodies :: Int -> Xp Int -> Xp String
+--     bodies = \case
+--         0 -> const $ xval "The number is Positive!"
+--         1 -> const $ xval "The number is Negative!"
+--         2 -> const $ xval "The number is Zero!"
 
--- | Simple nested case expressions.
-xprog3 :: Xp Int
-xprog3 = 3 + xprog1 (xprog1 2)
+-- -- | Simple nested case expressions.
+-- xprog3 :: Xp Int
+-- xprog3 = 3 + xprog1 (xprog1 2)
 
 -- case2 :: Xp Int -> (Partition Int -> Xp a) -> Xp a
 -- data Partition Int = Pos (Expr Int) | Neg (Expr Int)   <- Type families?

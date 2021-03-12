@@ -1,4 +1,14 @@
-module Xp where
+{- | Core module of the expression language.
+
+Defines the data type, necessary classes, and key combinators.
+-}
+
+{-# LANGUAGE DerivingStrategies  #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving  #-}
+
+module Xp.Core where
 
 
 -- | Main data type.

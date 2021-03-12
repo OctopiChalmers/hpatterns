@@ -7,46 +7,20 @@ license-file:        LICENSE
 author:              Thomas Li
 maintainer:          guslithd@student.gu.se
 category:            Language
-extra-source-files:  CHANGELOG.md
+extra-source-files:
 
 library
-  exposed-modules:     HExp
-                     , Examples
-                     , Case0
-                     , Case1
-                     , Case2
-                     , Case3
-                     , Case4
-                     , Case5
-
-                     , Xp
-                     , XpCompile
-                     , XpExample
-  -- other-modules:
-  -- other-extensions:
-  build-depends:       base ^>=4.12.0.0
-                     , transformers
-                     , containers
-                     , language-c99-simple
-                     , language-c99
-                     , pretty
-                     , microlens
-                     , microlens-mtl
-                     , microlens-th
-                     , mtl
+  exposed-modules:
+      Xp.Core
+    , Xp.Compile
+    , Xp.Examples
+  build-depends:
+      base ^>=4.12.0.0
+    , containers
+    , microlens
+    , microlens-mtl
+    , microlens-th
+    , mtl
   hs-source-dirs:      src
   default-language:    Haskell2010
-
   default-extensions:
-      AllowAmbiguousTypes
-    , DerivingStrategies
-    , FlexibleInstances
-    , GADTs
-    , InstanceSigs
-    , LambdaCase
-    , MultiParamTypeClasses
-    , RankNTypes
-    , ScopedTypeVariables
-    , StandaloneDeriving
-    , TupleSections
-    , TypeApplications
