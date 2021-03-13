@@ -10,11 +10,10 @@ Defines the data type, necessary classes, and key combinators.
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE StandaloneDeriving    #-}
+{-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TypeApplications      #-}
 
 module Xp.Core where
-
-import Data.Data
 
 
 -- | Main data type.
@@ -52,7 +51,7 @@ instance Num a => Num (Xp a) where
 -- * Partitioning
 --
 
-class (Enum (p a), Bounded (p a)) => Partition (p :: * -> *) a where
+class Partition (p :: * -> *) a where
     {- | Predicates for determining how to branch to the possible partitions.
 
     The ordering of the predicates in the output list matters, since they
@@ -71,12 +70,16 @@ class (Enum (p a), Bounded (p a)) => Partition (p :: * -> *) a where
     -}
     conds :: Xp a -> [Xp Bool]
 
-    {- | Number of data constructors for type (p a).
+    -- TODO: Any way to do this automatically, in a generic way? After all, we
+    -- know that all constructors of (p a) are going to have SVar as their
+    -- arguments.
+    constructors :: [p a]
 
-    TODO: Get this automatically, setting it manually is error-prone.
-        (TH? Generics? Data.Data?)
-    -}
-    -- size :: Int
+-- Data type declarations can't be in the same module as splice :(
+data Num a => Sig a
+    = Pos (Xp a)
+    | Neg (Xp a)
+    deriving (Show)
 
 --
 -- * Combinators
@@ -95,7 +98,7 @@ case' scrut f = Case scrut (zip preds bodies)
     preds = conds @p @a SVar
 
     parts :: [p a]
-    parts = [minBound ..]
+    parts = constructors
 
     bodies :: [Xp b]
     bodies = map f parts

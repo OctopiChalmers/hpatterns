@@ -5,16 +5,16 @@ Print the C output of a program @(p :: Xp a)@ with
 > printProg p
 -}
 
-{-# LANGUAGE LambdaCase         #-}
+{-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE TemplateHaskell       #-}
+
 
 module Xp.Examples where
 
-import Data.Data
-import GHC.Generics
-
 import Xp.Core
 import Xp.Compile (compile)
+import Xp.TH
 
 
 printProg :: Show a => Xp a -> IO ()
@@ -102,15 +102,11 @@ if (scrut == 0) { result = "The number is Zero!" }
 -- Apply to all cases, get a list of expressions:
 -- [ Sym Var .+ 1, Const 0]
 
-data Num a => Sig a
-    = Pos
-    | Neg
-    deriving (Show, Enum, Bounded)
-
 instance Partition Sig Int where
     conds var = [var >. 0, var <. 0]
+    constructors = $(test ''Sig)
 
 ex1 :: Xp Int -> Xp Int
 ex1 var = case' var $ \case
-    Pos -> SVar + 1
-    Neg -> 0
+    Pos e -> e + 1
+    Neg e -> 0

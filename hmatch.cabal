@@ -15,6 +15,7 @@ library
       Xp.Core
     , Xp.Compile
     , Xp.Examples
+    , Xp.TH
   build-depends:
       base ^>=4.12.0.0
     , containers
@@ -22,6 +23,11 @@ library
     , microlens-mtl
     , microlens-th
     , mtl
+    , template-haskell
+
+-- for debugging
+    , pretty-simple
+    , text
   hs-source-dirs:      src
   default-language:    Haskell2010
   default-extensions:
