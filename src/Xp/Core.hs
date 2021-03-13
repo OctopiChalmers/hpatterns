@@ -3,12 +3,18 @@
 Defines the data type, necessary classes, and key combinators.
 -}
 
-{-# LANGUAGE DerivingStrategies  #-}
-{-# LANGUAGE GADTs               #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE StandaloneDeriving  #-}
+{-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE DerivingStrategies    #-}
+{-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE KindSignatures        #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE StandaloneDeriving    #-}
+{-# LANGUAGE TypeApplications      #-}
 
 module Xp.Core where
+
+import Data.Data
 
 
 -- | Main data type.
@@ -16,8 +22,6 @@ data Xp a where
     Val :: a -> Xp a
     Var :: String -> Xp a
     SVar :: Xp a
-    SField :: String -> Xp a
-        -- ^ Like an SVar but with a name to refer to a field of a struct.
 
     Case :: (Show a)
         => Xp a               -- ^ Scrutinee
@@ -45,8 +49,56 @@ instance Num a => Num (Xp a) where
     signum = error "not implemented"
 
 --
+-- * Partitioning
+--
+
+class (Enum (p a), Bounded (p a)) => Partition (p :: * -> *) a where
+    {- | Predicates for determining how to branch to the possible partitions.
+
+    The ordering of the predicates in the output list matters, since they
+    will each be zipped with a constructor of the partition type (in order).
+
+    For example, from the following definitions, the (> 0) condition will
+    be used for the @Pos@ constructor, and (< 0) for the @Neg@ constructor:
+
+    @
+    data Sig a = Pos | Neg deriving (Show, Enum, Bounded)
+    instance Partition Sig Int
+        conds var = [var >. 0, var <. 0]
+    @
+
+    TODO: Make this independent of order (maybe using tuples)?
+    -}
+    conds :: Xp a -> [Xp Bool]
+
+    {- | Number of data constructors for type (p a).
+
+    TODO: Get this automatically, setting it manually is error-prone.
+        (TH? Generics? Data.Data?)
+    -}
+    -- size :: Int
+
+--
 -- * Combinators
 --
+
+case' :: forall p a b .
+    ( Partition p a
+    , Show a
+    )
+    => Xp a
+    -> (p a -> Xp b)
+    -> Xp b
+case' scrut f = Case scrut (zip preds bodies)
+  where
+    preds :: [Xp Bool]
+    preds = conds @p @a SVar
+
+    parts :: [p a]
+    parts = [minBound ..]
+
+    bodies :: [Xp b]
+    bodies = map f parts
 
 -- | Build a case expression.
 xcase :: forall a b .

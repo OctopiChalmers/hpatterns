@@ -113,9 +113,6 @@ cXp = \case
         pure $ mconcat [unName funName, "(", scrutStr, ")"]
 
     SVar -> unName <$> R.ask
-    SField s -> do
-        scrutStr <- unName <$> R.ask
-        pure $ scrutStr <> "." <> s
 
   where
     binOp :: (Show a, Show b) => String -> Xp a -> Xp b -> Compile String
