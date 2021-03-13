@@ -109,4 +109,4 @@ instance Partition Sig Int where
 ex1 :: Xp Int -> Xp Int
 ex1 var = case' var $ \case
     Pos e -> e + 1
-    Neg e -> 0
+    Neg e1 e2 -> e1 + e2

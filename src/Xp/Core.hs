@@ -78,7 +78,7 @@ class Partition (p :: * -> *) a where
 -- Data type declarations can't be in the same module as splice :(
 data Num a => Sig a
     = Pos (Xp a)
-    | Neg (Xp a)
+    | Neg (Xp a) (Xp a)
     deriving (Show)
 
 --
