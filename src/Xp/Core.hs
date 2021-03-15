@@ -10,7 +10,6 @@ Defines the data type, necessary classes, and key combinators.
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE StandaloneDeriving    #-}
-{-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TypeApplications      #-}
 
 module Xp.Core where
@@ -78,7 +77,13 @@ class Partition (p :: * -> *) a where
 -- Data type declarations can't be in the same module as splice :(
 data Num a => Sig a
     = Pos (Xp a)
-    | Neg (Xp a) (Xp a)
+    | Neg (Xp a)
+    | Zero
+    deriving (Show)
+
+data PartitionChar a
+    = CharA (Xp Char)
+    | CharNotA (Xp Char)
     deriving (Show)
 
 --
@@ -143,6 +148,9 @@ xcase var condFun bodyFun = Case var (zip conds bodies)
 
 (==.) :: (Show a, Eq a) => Xp a -> Xp a -> Xp Bool
 (==.) = Eq
+
+(/=.) :: (Show a, Eq a) => Xp a -> Xp a -> Xp Bool
+x /=. y = xnot (x `Eq` y)
 
 (&&.) :: Xp Bool -> Xp Bool -> Xp Bool
 (&&.) = And

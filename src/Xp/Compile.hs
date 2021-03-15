@@ -1,10 +1,9 @@
 {- | Module containing things concering compilation from Xp to C code output.
 
-Simple and naive implementation, basically just concatenating strings.
+Doofus implementation, basically just concatenating strings.
 -}
 
 {-# LANGUAGE DerivingStrategies         #-}
-{-# LANGUAGE ExplicitForAll             #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
@@ -15,7 +14,6 @@ module Xp.Compile where
 
 import qualified Control.Monad.Reader as R
 import qualified Control.Monad.State.Strict as St
-import qualified Data.Map.Strict as M
 import qualified Lens.Micro as Lens
 import qualified Lens.Micro.Mtl as Lens.Mtl
 import qualified Lens.Micro.TH as Lens.TH
@@ -103,7 +101,7 @@ cXp = \case
     Eq  e1 e2 -> binOp "==" e1 e2
     And e1 e2 -> binOp "&&" e1 e2
     Or  e1 e2 -> binOp "||" e1 e2
-    Not e -> ("(-" ++) . (++ ")") <$> cXp e
+    Not e -> ("(!" ++) . (++ ")") <$> cXp e
 
     Case scrut matches -> do
         funName <- freshId
@@ -113,7 +111,6 @@ cXp = \case
         pure $ mconcat [unName funName, "(", scrutStr, ")"]
 
     SVar -> unName <$> R.ask
-
   where
     binOp :: (Show a, Show b) => String -> Xp a -> Xp b -> Compile String
     binOp op e1 e2 = do
