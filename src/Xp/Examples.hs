@@ -34,6 +34,14 @@ instance (Num a, Show a, Eq a) => Partition Sig a where
     {- | 'makeConstructors' generates appropriate values for the input type,
     since we always want any (Xp a) occurrences to be the SVar constructor.
     See documentation for 'makeConstructors' for examples.
+
+    Here,
+
+    > constructors = $(makeConstructors ''Sig)
+
+    is equivalent to
+
+    > constructors = [Pos SVar, Neg SVar]
     -}
     constructors = $(makeConstructors ''Sig)
 
