@@ -1,8 +1,14 @@
+{- Functions are going to be super-partial, but it's fine (sort of) for
+TH functions since they will raise compile-time errors anyway. Still, it
+would be better to provide nicer error messages using `error` where
+appropriate.
+-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
+
 {-# LANGUAGE TemplateHaskell #-}
 
 module Xp.TH where
 
-import qualified Data.Text.Lazy as T
 import qualified Data.List as List
 
 import qualified Xp.Core
@@ -29,8 +35,8 @@ makeConstructors pa = do
         apply e = List.foldl' AppE e
 
     bt2arg :: BangType -> ExpQ
-    bt2arg (bang, ty) =
+    bt2arg (_bang, ty) =
         case ty of
-            AppT (ConT name) t2
+            AppT (ConT name) _t2
                 | name == ''Xp.Core.Xp -> [e| (Xp.Core.SVar) |]
             _ -> error $ "Non-Xp argument to data constructor: " <> show ty
