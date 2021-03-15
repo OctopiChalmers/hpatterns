@@ -38,3 +38,12 @@ ex2 :: Xp Char -> Xp Int
 ex2 var = case' var $ \case
     CharA _    -> 1
     CharNotA _ -> 0
+
+type MoistureLvl = Double
+type Temp        = Double
+sufficientlyMoist :: Xp MoistureLvl -> Xp Double
+sufficientlyMoist moistLvl = case' moistLvl $ \case
+    Pos e -> e / 4
+    Neg e -> 1 / e
+    Zero  -> 0.0
+

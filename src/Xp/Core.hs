@@ -29,6 +29,7 @@ data Xp a where
     Add :: (Num a) =>         Xp a -> Xp a -> Xp a
     Mul :: (Num a) =>         Xp a -> Xp a -> Xp a
     Sub :: (Num a) =>         Xp a -> Xp a -> Xp a
+    Div :: (Fractional a) =>  Xp a -> Xp a -> Xp a
 
     Gt  :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
     Lt  :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
@@ -45,6 +46,10 @@ instance Num a => Num (Xp a) where
     fromInteger n = Val (fromInteger n)
     abs = error "not implemented"
     signum = error "not implemented"
+
+instance Fractional a => Fractional (Xp a) where
+    fromRational xrat = Val (fromRational xrat)
+    (/) = Div
 
 --
 -- * Partitioning

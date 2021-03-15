@@ -96,6 +96,7 @@ cXp = \case
     Add e1 e2 -> binOp "+" e1 e2
     Mul e1 e2 -> binOp "*" e1 e2
     Sub e1 e2 -> binOp "-" e1 e2
+    Div e1 e2 -> binOp "/" e1 e2
     Gt  e1 e2 -> binOp ">" e1 e2
     Lt  e1 e2 -> binOp "<" e1 e2
     Eq  e1 e2 -> binOp "==" e1 e2
