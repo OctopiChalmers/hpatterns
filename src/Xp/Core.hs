@@ -74,22 +74,15 @@ class Partition (p :: * -> *) a where
     -}
     conds :: Xp a -> [Xp Bool]
 
-    -- TODO: Any way to do this automatically, in a generic way? After all, we
-    -- know that all constructors of (p a) are going to have SVar as their
-    -- arguments.
+    {- | TODO: Generate this automatically and in a generic way.
+
+    After all, we know that all constructors of (p a) are going
+    to have SVar as their arguments.
+
+    For now, 'Xp.TH.makeConstructors' automates this a little bit, but
+    is not ideal.
+    -}
     constructors :: [p a]
-
--- Data type declarations can't be in the same module as splice :(
-data Num a => Sig a
-    = Pos (Xp a)
-    | Neg (Xp a)
-    | Zero
-    deriving (Show)
-
-data PartitionChar a
-    = CharA (Xp Char)
-    | CharNotA (Xp Char)
-    deriving (Show)
 
 --
 -- * Combinators
@@ -107,59 +100,30 @@ case' scrut f = Case scrut (zip preds bodies)
     preds :: [Xp Bool]
     preds = conds @p @a SVar
 
-    parts :: [p a]
-    parts = constructors
-
     bodies :: [Xp b]
-    bodies = map f parts
+    bodies = map f (constructors @p @a)
 
--- | Build a case expression.
-xcase :: forall a b .
-    ( Show a
-    )
-    => Xp a
-    -- ^ This will be the scrutinee.
-    -> (Xp a -> [Xp Bool])
-    -- ^ Function which, given a symbolic variable, returns a predicate for
-    -- each branch of the case-expression.
-    -> (Int -> Xp a -> Xp b)
-    -- ^ Function which, given an index, returns a function which can be
-    -- applied to the scrutinee to produce the body of a branch in the
-    -- case expression. The index indicates which of the predicates to
-    -- match against.
-    -> Xp b
-xcase var condFun bodyFun = Case var (zip conds bodies)
-  where
-    conds :: [Xp Bool]
-    conds = condFun SVar
-
-    bodies :: [Xp b]
-    bodies = trick (length conds) bodyFun
-
-    trick ::
-           Int
-        -> (Int -> Xp a -> Xp b)
-        -> [Xp b]
-    trick n f = map ($ SVar) fs
-      where
-        fs :: [Xp a -> Xp b]
-        fs = map f [0 .. n]
-
+infix 4 >.
 (>.) :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
 (>.) = Gt
 
+infix 4 <.
 (<.) :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
 (<.) = Lt
 
+infix 4 ==.
 (==.) :: (Show a, Eq a) => Xp a -> Xp a -> Xp Bool
 (==.) = Eq
 
+infix 4 /=.
 (/=.) :: (Show a, Eq a) => Xp a -> Xp a -> Xp Bool
 x /=. y = xnot (x `Eq` y)
 
+infixr 3 &&.
 (&&.) :: Xp Bool -> Xp Bool -> Xp Bool
 (&&.) = And
 
+infixr 2 ||.
 (||.) :: Xp Bool -> Xp Bool -> Xp Bool
 (||.) = Or
 

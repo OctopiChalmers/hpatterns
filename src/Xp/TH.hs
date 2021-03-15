@@ -17,6 +17,18 @@ import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 
 
+
+{- | Enumerate the constructors of some type, inserting 'SVar' wherever
+something of type (Xp a) is required.
+
+For example, given the following definition:
+
+> data Sig a = Pos (Xp a) | Neg (Xp a) | Zero
+
+@makeConstructors ''Sig@ will generate the following:
+
+> [Pos SVar, Neg SVar, Zero]
+-}
 makeConstructors :: Name -> Q Exp
 makeConstructors pa = do
     TyConI typeDec <- reify pa
