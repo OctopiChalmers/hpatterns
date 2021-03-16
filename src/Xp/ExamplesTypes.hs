@@ -30,13 +30,12 @@ data PartChar a
     deriving (Show)
 
 data PartMoisture a
-    = MoistureThirsty (Xp Double)
-    | MoisturePerfect (Xp Double)
-    | MoistureDrowning (Xp Double)
+    = MoistureDry (Xp Double)
+    | MoistureOk  (Xp Double)
     deriving (Show)
 
 data PartTemp a
-    = TempCold (Xp Double)
-    | TempOk (Xp Double)
-    | TempHot (Xp Double)
+    = TempCold (Xp Int)
+    | TempOk (Xp Int)
+    | TempHot (Xp Int)
     deriving (Show)
