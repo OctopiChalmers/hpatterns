@@ -16,7 +16,6 @@ Defines the data type, necessary classes, and key combinators.
 module Xp.Core where
 
 import qualified Control.Monad.State.Strict as St
-import qualified Data.IntSet as IS
 import qualified Lens.Micro as Lens
 import qualified Lens.Micro.Mtl as Lens
 import qualified Lens.Micro.TH as Lens
@@ -26,18 +25,27 @@ import qualified Lens.Micro.TH as Lens
 data Xp a where
     Val :: a -> Xp a
     Var :: String -> Xp a
+
+    {- | Symbolic variable. These are used to refer to other expressions,
+    such as the scrutinee in a case construct.
+    -}
     SVar :: String -> Xp a
 
+    -- | Representation of a case-expression.
     Case :: (Show a)
-        => (String, Xp a)     -- ^ Scrutinee tagged with a name.
-        -> [(Xp Bool, Xp b)]  -- ^ Matches (condition -> body)
+        => (String, Xp a)
+        -- ^ Scrutinee tagged with a name. The scrutinee needs to be tagged
+        -- so that we know how to refer to it in the body of the matches.
+        -> [(Xp Bool, Xp b)]
+        -- ^ Matches, consisting of a predicate, and the body of the match.
+        -- The body of the match uses 'SVar's to refer to the scrutinee.
         -> Xp b
 
+    -- Primitive operators.
     Add :: (Num a) =>         Xp a -> Xp a -> Xp a
     Mul :: (Num a) =>         Xp a -> Xp a -> Xp a
     Sub :: (Num a) =>         Xp a -> Xp a -> Xp a
     Div :: (Fractional a) =>  Xp a -> Xp a -> Xp a
-
     Gt  :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
     Lt  :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
     Eq  :: (Show a, Eq a) =>  Xp a -> Xp a -> Xp Bool
@@ -62,7 +70,7 @@ instance Fractional a => Fractional (Xp a) where
 -- * State/environment
 --
 
--- | Keeps track of some stuff we need when constructing the Xp program.
+-- | Keeps track of some stuff we need while constructing the Xp program.
 data Hst = Hst
     { _hstCounter :: Int
     }
@@ -83,12 +91,15 @@ freshId = do
     Lens.modifying hstCounter (+ 1)
     pure newId
 
-freshTag :: Hiska (Xp a)
-freshTag = SVar <$> freshId
-
 --
 -- * Partitioning
 --
+
+class Partition (p :: * -> *) a where
+    {- | All partition types must define how to generate the its
+    'PartitionData', given a symbolic variable.
+    -}
+    partition :: Xp a -> PartitionData p a
 
 {- | Data type containing necessary stuff to build case constructions.
 
@@ -101,17 +112,12 @@ The following must hold:
 > length xs == ys length
 -}
 data PartitionData p a = PartitionData
-    [Xp Bool]  -- Predicates for seclecting a branch.
-    [p a]      -- Fully applied constructors for the type (p a)
-
--- Vectors would check this with types instead.
-partitionIsAligned :: forall p a . Partition p a => Bool
-partitionIsAligned =
-    let PartitionData preds constructors = partition @p @a (error "DUMMY")
-    in 1 == IS.size (IS.fromList [length preds, length constructors])
-
-class Partition (p :: * -> *) a where
-    partition :: Xp a -> PartitionData p a
+    [Xp Bool]
+    -- ^ Predicates for seclecting a branch. These should be 'Xp' values,
+    -- using 'SVar's to refer to the scrutinee of a case-expression.
+    [p a]
+    -- ^ All constructors of type (p a), fully applied on 'SVar's where
+    -- applicable.
 
 --
 -- * Combinators
