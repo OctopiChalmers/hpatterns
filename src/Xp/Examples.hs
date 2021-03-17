@@ -151,27 +151,38 @@ int main() {
 }
 @
 -}
--- needsWatering :: Xp Int -> Xp Moisture -> Xp Bool
--- needsWatering temp moistLvl = case' moistLvl $ \case
---     MoistureOk m -> case' temp $ \case
---         TempHot t -> t >. 35 &&. m <. 0.5
---         _         -> xval False
---     MoistureDry _ -> xval True
+needsWatering :: Xp Int -> Xp Moisture -> Hiska (Xp Bool)
+needsWatering temp moistLvl = case' moistLvl $ \case
+    MoistureOk m -> case' temp $ \case
+        TempHot t -> pure $ t >. 35 &&. m <. 0.5
+        _         -> pure $ xval False
+    MoistureDry _ -> pure $ xval True
 
--- type Moisture = Double
--- type Temp     = Int
+type Moisture = Double
+type Temp     = Int
 
--- instance Partition PartMoisture Double where
---     conds var =
---         [ var <. 0.2  -- Dry
---         , 0.2 <. var  -- OK
---         ]
---     constructors = $(makeConstructors ''PartMoisture)
+instance Partition PartMoisture Double where
+    partition var = PartitionData preds constructors
+      where
+        preds =
+            [ var <. 0.2  -- Dry
+            , 0.2 <. var  -- OK
+            ]
+        constructors =
+            [ MoistureDry var
+            , MoistureOk  var
+            ]
 
--- instance Partition PartTemp Int where
---     conds var =
---         [ var <. 18                -- Cold
---         , 18 <. var &&. var <. 30  -- OK
---         , 30 <. var                -- Hot
---         ]
---     constructors = $(makeConstructors ''PartTemp)
+instance Partition PartTemp Int where
+    partition var = PartitionData preds constructors
+      where
+        preds =
+            [ var <. 18                -- Cold
+            , 18 <. var &&. var <. 30  -- OK
+            , 30 <. var                -- Hot
+            ]
+        constructors =
+            [ TempCold var
+            , TempOk   var
+            , TempHot  var
+            ]

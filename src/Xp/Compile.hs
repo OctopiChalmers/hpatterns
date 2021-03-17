@@ -18,7 +18,7 @@ import qualified Lens.Micro as Lens
 import qualified Lens.Micro.Mtl as Lens.Mtl
 import qualified Lens.Micro.TH as Lens.TH
 
-import Xp.Core hiding (freshId)
+import Xp.Core (Xp (..))
 
 
 --
@@ -38,6 +38,8 @@ data Cm = Cm
     -- ^ Seed for generating unique variables.
     , _cmDefs    :: [String]
     -- ^ Function definitions added as necssary.
+    , _cmGlobals :: [String]
+    -- ^ Global variable declarations.
     }
 $(Lens.TH.makeLenses ''Cm)
 
@@ -64,7 +66,17 @@ compile program =
         main = mainWrap code
     in mconcat
         [ "\n// Code generated from Xp program \n\n"
-        , concatMap (++ "\n") (st Lens.^. cmDefs)
+
+        -- #include lines
+        , concatMap ((++ "\n") . includeWrap) ["stdio.h"], "\n"
+
+        -- Declare global variables
+        , "// Variables correpsonding to scrutinees in case expressions\n"
+        , concatMap (++ "\n") (st Lens.^. cmGlobals), "\n"
+
+        -- The definitions are added in the wrong order (for the C code),
+        -- so we reverse the list of definitions before printing them.
+        , concatMap (++ "\n") . reverse $ (st Lens.^. cmDefs)
         , main
         ]
   where
@@ -75,13 +87,17 @@ compile program =
     initCm = Cm
         { _cmCounter = 0
         , _cmDefs = []
+        , _cmGlobals = []
         }
+
+    includeWrap :: String -> String
+    includeWrap s = "#include <" ++ s ++ ">"
 
     mainWrap :: String -> String
     mainWrap body = mconcat
         [ "int main() {\n"
         , "    int output = ", body, ";\n"
-        , "    printf(\"Program output is: %d\", output)\n"
+        , "    printf(\"Program output is: %d\\n\", output);\n"
         , "    return 0;\n"
         , "}\n"
         ]
@@ -106,8 +122,8 @@ cXp = \case
 
     Case (scrutName, scrut) matches -> do
         funName <- freshId
-        newCaseFun funName (scrutName, matches)
 
+        newCaseFun funName (scrutName, matches)
         scrutStr <- cXp scrut
 
         pure $ mconcat [unName funName, "(", scrutStr, ")"]
@@ -134,11 +150,21 @@ newCaseFun :: forall b .
 newCaseFun (Name funName) (scrutName, matches) = do
     resVar <- freshId
     matchesStr <- mapM (cMatch resVar) matches
+    newGlobalVar scrutName
+
+    Name argName <- freshId
 
     let def = mconcat
-            [ "int ", funName, "(int ", scrutName, ") {\n"
+            [ "int ", funName, "(int ", argName, ") {\n"
+            , "    ", scrutName, " = ", argName, ";\n"
             , "    int ", unName resVar, ";\n"
             , concatMap ("    " ++) matchesStr
+            -- Hacky thing to soak the final dangling "else"
+            -- Printout should probably not be needed; we ideally want to
+            -- perform the exhaustiveness check in Haskell instead. But it
+            -- looks a bit empty otherwise.
+            , "    { printf(\"Non-exhaustive conditions in function `",
+                funName, "`\\n\"); }\n"
             , "    return ", unName resVar, ";\n"
             , "}\n"
             ]
@@ -148,4 +174,9 @@ newCaseFun (Name funName) (scrutName, matches) = do
     cMatch (Name resVar) (cond, body) = do
         condStr <- cXp cond
         bodyStr <- cXp body
-        pure $ mconcat ["if (", condStr, ") { ", resVar, " = ", bodyStr, " }\n"]
+        pure $ mconcat ["if (", condStr, ") { ", resVar, " = ", bodyStr, "; } else\n"]
+
+newGlobalVar :: String -> Compile ()
+newGlobalVar s =
+    let varStr = concat ["int ", s, ";"]
+    in Lens.Mtl.modifying cmGlobals (varStr :)
