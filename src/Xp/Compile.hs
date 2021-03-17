@@ -18,7 +18,7 @@ import qualified Lens.Micro as Lens
 import qualified Lens.Micro.Mtl as Lens.Mtl
 import qualified Lens.Micro.TH as Lens.TH
 
-import Xp.Core
+import Xp.Core hiding (freshId)
 
 
 --
@@ -104,14 +104,15 @@ cXp = \case
     Or  e1 e2 -> binOp "||" e1 e2
     Not e -> ("(!" ++) . (++ ")") <$> cXp e
 
-    Case scrut matches -> do
+    Case (scrutName, scrut) matches -> do
         funName <- freshId
-        newCaseFun funName matches
+        newCaseFun funName (scrutName, matches)
 
         scrutStr <- cXp scrut
+
         pure $ mconcat [unName funName, "(", scrutStr, ")"]
 
-    SVar -> unName <$> R.ask
+    SVar name -> pure name
   where
     binOp :: (Show a, Show b) => String -> Xp a -> Xp b -> Compile String
     binOp op e1 e2 = do
@@ -125,13 +126,14 @@ definition, and add it to the compilation state.
 newCaseFun :: forall b .
     ( Show b
     )
-    => Name               -- ^ Name of function.
-    -> [(Xp Bool, Xp b)]  -- ^ Branches/matches of case-expression.
+    => Name
+    -- ^ Name of function.
+    -> (String, [(Xp Bool, Xp b)])
+    -- ^ Name of scrutinee, and branches/matches of case-expression.
     -> Compile ()
-newCaseFun (Name funName) matches = do
+newCaseFun (Name funName) (scrutName, matches) = do
     resVar <- freshId
     matchesStr <- mapM (cMatch resVar) matches
-    Name scrutName <- R.ask
 
     let def = mconcat
             [ "int ", funName, "(int ", scrutName, ") {\n"

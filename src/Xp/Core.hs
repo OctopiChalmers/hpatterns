@@ -11,18 +11,25 @@ Defines the data type, necessary classes, and key combinators.
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TypeApplications      #-}
+{-# LANGUAGE TemplateHaskell       #-}
 
 module Xp.Core where
+
+import qualified Control.Monad.State.Strict as St
+import qualified Data.IntSet as IS
+import qualified Lens.Micro as Lens
+import qualified Lens.Micro.Mtl as Lens
+import qualified Lens.Micro.TH as Lens
 
 
 -- | Main data type.
 data Xp a where
     Val :: a -> Xp a
     Var :: String -> Xp a
-    SVar :: Xp a
+    SVar :: String -> Xp a
 
     Case :: (Show a)
-        => Xp a               -- ^ Scrutinee
+        => (String, Xp a)     -- ^ Scrutinee tagged with a name.
         -> [(Xp Bool, Xp b)]  -- ^ Matches (condition -> body)
         -> Xp b
 
@@ -52,37 +59,59 @@ instance Fractional a => Fractional (Xp a) where
     (/) = Div
 
 --
+-- * State/environment
+--
+
+-- | Keeps track of some stuff we need when constructing the Xp program.
+data Hst = Hst
+    { _hstCounter :: Int
+    }
+$(Lens.makeLenses ''Hst)
+
+type Hiska = St.State Hst
+
+runHiska :: Hiska a -> a
+runHiska x = St.evalState x initHst
+  where
+    initHst :: Hst
+    initHst = Hst 0
+
+-- | Return a unique identifier and increment the counter in state.
+freshId :: Hiska String
+freshId = do
+    newId <- ("coreId" ++) . show <$> Lens.use hstCounter
+    Lens.modifying hstCounter (+ 1)
+    pure newId
+
+freshTag :: Hiska (Xp a)
+freshTag = SVar <$> freshId
+
+--
 -- * Partitioning
 --
 
+{- | Data type containing necessary stuff to build case constructions.
+
+The lists need be of equal length, or behavior is undefined. I.e. for any
+
+> PartitionData xs ys
+
+The following must hold:
+
+> length xs == ys length
+-}
+data PartitionData p a = PartitionData
+    [Xp Bool]  -- Predicates for seclecting a branch.
+    [p a]      -- Fully applied constructors for the type (p a)
+
+-- Vectors would check this with types instead.
+partitionIsAligned :: forall p a . Partition p a => Bool
+partitionIsAligned =
+    let PartitionData preds constructors = partition @p @a (error "DUMMY")
+    in 1 == IS.size (IS.fromList [length preds, length constructors])
+
 class Partition (p :: * -> *) a where
-    {- | Predicates for determining how to branch to the possible partitions.
-
-    The ordering of the predicates in the output list matters, since they
-    will each be zipped with a constructor of the partition type (in order).
-
-    For example, from the following definitions, the (> 0) condition will
-    be used for the @Pos@ constructor, and (< 0) for the @Neg@ constructor:
-
-    @
-    data Sig a = Pos | Neg deriving (Show, Enum, Bounded)
-    instance Partition Sig Int
-        conds var = [var >. 0, var <. 0]
-    @
-
-    TODO: Make this independent of order (maybe using tuples)?
-    -}
-    conds :: Xp a -> [Xp Bool]
-
-    {- | TODO: Generate this automatically and in a generic way.
-
-    After all, we know that all constructors of (p a) are going
-    to have SVar as their arguments.
-
-    For now, 'Xp.TH.makeConstructors' automates this a little bit, but
-    is not ideal.
-    -}
-    constructors :: [p a]
+    partition :: Xp a -> PartitionData p a
 
 --
 -- * Combinators
@@ -93,15 +122,22 @@ case' :: forall p a b .
     , Show a
     )
     => Xp a
-    -> (p a -> Xp b)
-    -> Xp b
-case' scrut f = Case scrut (zip preds bodies)
-  where
-    preds :: [Xp Bool]
-    preds = conds @p @a SVar
+    -> (p a -> Hiska (Xp b))
+    -> Hiska (Xp b)
+case' scrut f = do
+    -- Generate new tag to keep track of which scrutinee we refer to
+    -- in the body of a match.
+    scrutName <- freshId
 
-    bodies :: [Xp b]
-    bodies = map f (constructors @p @a)
+    -- Generate the predicates and applied constructors for the input parition
+    -- type.
+    let PartitionData preds constructors = partition @p @a (SVar scrutName)
+
+    -- Generate the bodies of the matches by applying the input function
+    -- to every possible constructor; compare to The Trick.
+    bodies <- mapM f constructors
+
+    pure $ Case (scrutName, scrut) (zip preds bodies)
 
 infix 4 >.
 (>.) :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool

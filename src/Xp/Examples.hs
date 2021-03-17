@@ -54,28 +54,17 @@ int main() {
 }
 @
 -}
-ex1 :: Xp Int -> Xp Int
+ex1 :: Xp Int -> Hiska (Xp Int)
 ex1 var = case' var $ \case
-    Pos e -> e + 1
-    Neg e -> e
-    Zero  -> 0
+    Pos e -> pure (e + 1)
+    Neg e -> pure e
+    Zero  -> pure 0
 
 instance (Num a, Show a, Eq a) => Partition Sig a where
-    conds var = [var >. 0, var <. 0, var ==. 0]
-
-    {- | 'makeConstructors' generates appropriate values for the input type,
-    since we always want any (Xp a) occurrences to be the SVar constructor.
-    See documentation for 'makeConstructors' for examples.
-
-    Here,
-
-    > constructors = $(makeConstructors ''Sig)
-
-    is equivalent to
-
-    > constructors = [Pos SVar, Neg SVar]
-    -}
-    constructors = $(makeConstructors ''Sig)
+    partition var = PartitionData preds constructors
+      where
+        preds = [var >. 0, var <. 0, var ==. 0]
+        constructors = [Pos var, Neg var, Zero]
 
 --
 -- * Example 2
@@ -105,14 +94,14 @@ int main() {
 }
 @
 -}
-ex2 :: Xp Char -> Xp Bool
-ex2 var = case' var $ \case
-    CharA _    -> xval True
-    CharNotA _ -> xval False
+-- ex2 :: Xp Char -> Xp Bool
+-- ex2 var = case' var $ \case
+--     CharA _    -> xval True
+--     CharNotA _ -> xval False
 
-instance Partition PartChar Char where
-    conds var = [var ==. xval 'A', var /=. xval 'A']
-    constructors = $(makeConstructors ''PartChar)
+-- instance Partition PartChar Char where
+--     conds var = [var ==. xval 'A', var /=. xval 'A']
+--     constructors = $(makeConstructors ''PartChar)
 
 --
 -- * Example 3
@@ -162,27 +151,27 @@ int main() {
 }
 @
 -}
-needsWatering :: Xp Int -> Xp Moisture -> Xp Bool
-needsWatering temp moistLvl = case' moistLvl $ \case
-    MoistureDry _       -> xval True
-    MoistureOk moistLvl -> case' temp $ \case
-        TempHot temp -> temp >. 35 &&. moistLvl <. 0.5
-        _            -> xval False
+-- needsWatering :: Xp Int -> Xp Moisture -> Xp Bool
+-- needsWatering temp moistLvl = case' moistLvl $ \case
+--     MoistureOk m -> case' temp $ \case
+--         TempHot t -> t >. 35 &&. m <. 0.5
+--         _         -> xval False
+--     MoistureDry _ -> xval True
 
-type Moisture = Double
-type Temp     = Int
+-- type Moisture = Double
+-- type Temp     = Int
 
-instance Partition PartMoisture Double where
-    conds var =
-        [ var <. 0.2  -- Dry
-        , 0.2 <. var  -- OK
-        ]
-    constructors = $(makeConstructors ''PartMoisture)
+-- instance Partition PartMoisture Double where
+--     conds var =
+--         [ var <. 0.2  -- Dry
+--         , 0.2 <. var  -- OK
+--         ]
+--     constructors = $(makeConstructors ''PartMoisture)
 
-instance Partition PartTemp Int where
-    conds var =
-        [ var <. 18                -- Cold
-        , 18 <. var &&. var <. 30  -- OK
-        , 30 <. var                -- Hot
-        ]
-    constructors = $(makeConstructors ''PartTemp)
+-- instance Partition PartTemp Int where
+--     conds var =
+--         [ var <. 18                -- Cold
+--         , 18 <. var &&. var <. 30  -- OK
+--         , 30 <. var                -- Hot
+--         ]
+--     constructors = $(makeConstructors ''PartTemp)
