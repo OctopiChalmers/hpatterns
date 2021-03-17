@@ -17,25 +17,3 @@ Ideally, we'd like to automate and generalize the call to the
 module Xp.ExamplesTypes where
 
 import Xp.Core
-
-data Num a => Sig a
-    = Pos (Xp a)
-    | Neg (Xp a)
-    | Zero
-    deriving (Show)
-
-data PartChar a
-    = CharA (Xp Char)
-    | CharNotA (Xp Char)
-    deriving (Show)
-
-data PartMoisture a
-    = MoistureDry (Xp Double)
-    | MoistureOk  (Xp Double)
-    deriving (Show)
-
-data PartTemp a
-    = TempCold (Xp Int)
-    | TempOk (Xp Int)
-    | TempHot (Xp Int)
-    deriving (Show)

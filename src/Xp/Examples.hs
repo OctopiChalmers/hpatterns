@@ -1,6 +1,6 @@
 {- | Examples using Xp.
 
-Print the C output of a program @(p :: Xp a)@ with
+Print the C output of a program @(p :: Hiska (Xp a))@ with
 
 > printProg p
 -}
@@ -62,6 +62,12 @@ ex1 var = case' var $ \case
     Neg e -> pure e
     Zero  -> pure 0
 
+data Num a => Sig a
+    = Pos (Xp a)
+    | Neg (Xp a)
+    | Zero
+    deriving (Show)
+
 instance (Num a, Show a, Eq a) => Partition Sig a where
     partition var = PartitionData preds constructors
       where
@@ -101,6 +107,11 @@ ex2 :: Xp Char -> Hiska (Xp Bool)
 ex2 var = case' var $ \case
     CharA _    -> pure $ xval True
     CharNotA _ -> pure $ xval False
+
+data PartChar a
+    = CharA (Xp Char)
+    | CharNotA (Xp Char)
+    deriving (Show)
 
 instance Partition PartChar Char where
     partition var = PartitionData preds constructors
@@ -164,6 +175,17 @@ needsWatering temp moistLvl = case' moistLvl $ \case
 
 type Moisture = Double
 type Temp     = Int
+
+data PartMoisture a
+    = MoistureDry (Xp Double)
+    | MoistureOk  (Xp Double)
+    deriving (Show)
+
+data PartTemp a
+    = TempCold (Xp Int)
+    | TempOk (Xp Int)
+    | TempHot (Xp Int)
+    deriving (Show)
 
 instance Partition PartMoisture Double where
     partition var = PartitionData preds constructors
