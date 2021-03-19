@@ -18,7 +18,7 @@ import qualified Lens.Micro as Lens
 import qualified Lens.Micro.Mtl as Lens.Mtl
 import qualified Lens.Micro.TH as Lens.TH
 
-import Xp.Core (Xp (..))
+import Xp.Core hiding (freshId)
 
 
 --
@@ -128,7 +128,7 @@ cXp = \case
 
         pure $ mconcat [unName funName, "(", scrutStr, ")"]
 
-    SVar name -> pure name
+    SVar (name, _idx) -> pure name
   where
     binOp :: (Show a, Show b) => String -> Xp a -> Xp b -> Compile String
     binOp op e1 e2 = do

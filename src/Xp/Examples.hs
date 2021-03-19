@@ -11,11 +11,15 @@ limitations of TH.
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 {-# LANGUAGE FlexibleInstances     #-}
+{-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TemplateHaskell       #-}
 
 module Xp.Examples where
+
+import Data.Bifunctor
 
 import Xp.Core
 import Xp.Compile (compile)
@@ -212,3 +216,31 @@ instance Partition PartTemp Int where
             , TempOk   var
             , TempHot  var
             ]
+
+--
+-- * Example 4
+--
+
+data SplitFrac = SplitFrac
+    { sfInt    :: (Xp Int)
+    , sfDouble :: (Xp Double)
+    } deriving Show
+
+instance Struct SplitFrac where
+    structName = "SplitFrac"
+    toFields (SplitFrac int frac) =
+        [ Field TInt "sfInt" int
+        , Field TDouble "sfDouble" frac
+        ]
+    fromFields [Field TInt "sfInt" int, Field TDouble "sfDouble" frac]
+        = SplitFrac int frac
+
+    dummy = SplitFrac undefined undefined
+
+instance ToStruct Double SplitFrac where
+    toStruct double =
+        let (int, frac) = properFraction double
+        in SplitFrac
+            { sfInt = xval int
+            , sfDouble = xval frac
+            }

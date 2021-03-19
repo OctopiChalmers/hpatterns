@@ -20,8 +20,40 @@ import qualified Lens.Micro as Lens
 import qualified Lens.Micro.Mtl as Lens
 import qualified Lens.Micro.TH as Lens
 
+import Data.Word
 
--- | Main data type.
+
+--
+-- * State/environment
+--
+
+-- ** This stuff goes first so that TH doesn't freak out
+
+-- | Keeps track of some stuff we need while constructing the Xp program.
+data Hst = Hst
+    { _hstCounter :: Int
+    }
+$(Lens.makeLenses ''Hst)
+
+type Hiska = St.State Hst
+
+runHiska :: Hiska a -> a
+runHiska x = St.evalState x initHst
+  where
+    initHst :: Hst
+    initHst = Hst 0
+
+-- | Return a unique identifier and increment the counter in state.
+freshId :: Hiska String
+freshId = do
+    newId <- ("coreId" ++) . show <$> Lens.use hstCounter
+    Lens.modifying hstCounter (+ 1)
+    pure newId
+
+--
+-- * Main data type
+--
+
 data Xp a where
     Val :: a -> Xp a
     Var :: String -> Xp a
@@ -29,7 +61,7 @@ data Xp a where
     {- | Symbolic variable. These are used to refer to other expressions,
     such as the scrutinee in a case construct.
     -}
-    SVar :: String -> Xp a
+    SVar :: (String, Int) -> Xp a
 
     -- | Representation of a case-expression.
     Case :: (Show a)
@@ -39,6 +71,11 @@ data Xp a where
         -> [(Xp Bool, Xp b)]
         -- ^ Matches, consisting of a predicate, and the body of the match.
         -- The body of the match uses 'SVar's to refer to the scrutinee.
+        -> Xp b
+
+    Case2 :: (Show pt, Struct pt)
+        => (String, Xp pt)
+        -> Xp b
         -> Xp b
 
     -- Primitive operators.
@@ -67,29 +104,45 @@ instance Fractional a => Fractional (Xp a) where
     (/) = Div
 
 --
--- * State/environment
+-- * Struct type representation
 --
 
--- | Keeps track of some stuff we need while constructing the Xp program.
-data Hst = Hst
-    { _hstCounter :: Int
-    }
-$(Lens.makeLenses ''Hst)
+class Struct pt => ToStruct a pt where
+    toStruct :: a -> pt
 
-type Hiska = St.State Hst
+{- | Create a symbolic value of a struct type. A symbolic value is a fully
+applied constructor, where all aruments are SVars.
+-}
+symStruct :: forall pt . Struct pt => pt
+symStruct =
+    fromFields
+    $ zipWith (\ idx (Field t s _) -> Field t s (SVar (s, idx))) [0 ..]
+    $ toFields (dummy @pt)
 
-runHiska :: Hiska a -> a
-runHiska x = St.evalState x initHst
-  where
-    initHst :: Hst
-    initHst = Hst 0
+class Struct pt where
+    structName :: String
+    toFields :: pt -> Fields pt
+    fromFields :: Fields pt -> pt
 
--- | Return a unique identifier and increment the counter in state.
-freshId :: Hiska String
-freshId = do
-    newId <- ("coreId" ++) . show <$> Lens.use hstCounter
-    Lens.modifying hstCounter (+ 1)
-    pure newId
+    dummy :: pt  -- Generate this with GHC generics? Or maybe TH?
+
+type Fields a = [Field]
+data Field = forall a . Show a => Field
+    (TRep a)  -- ^ Type of field as a constructor.
+    String    -- ^ Name of field.
+    (Xp a)    -- ^ Value of field.
+deriving instance Show Field
+
+data TRep a where
+    TBool   :: TRep Bool
+    TInt    :: TRep Int
+    TDouble :: TRep Double
+deriving instance Show a => Show (TRep a)
+
+showTRep :: TRep a -> String
+showTRep TBool = "bool"
+showTRep TInt = "int"
+showTRep TDouble = "double"
 
 --
 -- * Partitioning
@@ -119,6 +172,22 @@ data PartitionData p a = PartitionData
     -- ^ All constructors of type (p a), fully applied on 'SVar's where
     -- applicable.
 
+case2 :: forall pt a b .
+    ( ToStruct a pt
+    , Show pt
+    )
+    => a
+    -> (pt -> Xp b)
+    -> Hiska (Xp b)
+case2 scrut f = do
+    let inputStruct = toStruct @a @pt scrut
+
+    let body = f (symStruct @pt)
+
+    scrutName <- freshId
+
+    pure $ Case2 (scrutName, xval inputStruct) body
+
 --
 -- * Combinators
 --
@@ -137,7 +206,7 @@ case' scrut f = do
 
     -- Generate the predicates and applied constructors for the input parition
     -- type.
-    let PartitionData preds constructors = partition @p @a (SVar scrutName)
+    let PartitionData preds constructors = partition @p @a $ SVar (scrutName, 0)
 
     -- Generate the bodies of the matches by applying the input function
     -- to every possible constructor; compare to The Trick.
