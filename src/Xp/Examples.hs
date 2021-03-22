@@ -16,6 +16,7 @@ limitations of TH.
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE TypeApplications      #-}
 
 module Xp.Examples where
 
@@ -257,9 +258,12 @@ instance ToStruct Double SplitFrac where
             , sfDouble = xval frac
             }
 
-{- | Return true if the input double would round upwards to the nearest
-whole number.
+{- | Return true if the fractional part of the input would round upwards
+to the nearest whole number.
 -}
--- ex4 :: Double -> Xp Bool
--- ex4 input = case2 double $ \case
---     SplitFrac _ frac -> case' frac $ \case
+ex4 :: Double -> Hiska (Xp Bool)
+ex4 input = case2 input $ \case
+    SplitFrac _ frac ->
+        ifte (frac >. 0.5)
+            (xval True)
+            (xval False)
