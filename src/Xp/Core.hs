@@ -78,6 +78,12 @@ data Xp a where
         -> Xp b
         -> Xp b
 
+    IfThenElse ::
+           Xp Bool
+        -> Xp a
+        -> Xp a
+        -> Xp a
+
     -- Primitive operators.
     Add :: (Num a) =>         Xp a -> Xp a -> Xp a
     Mul :: (Num a) =>         Xp a -> Xp a -> Xp a
@@ -246,3 +252,6 @@ xvar = Var
 
 xval :: a -> Xp a
 xval = Val
+
+ifte :: Xp Bool -> Xp a -> Xp a -> Xp a
+ifte = IfThenElse

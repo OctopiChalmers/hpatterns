@@ -120,6 +120,27 @@ cXp = \case
     Or  e1 e2 -> binOp "||" e1 e2
     Not e -> ("(!" ++) . (++ ")") <$> cXp e
 
+    IfThenElse cond eTrue eFalse -> do
+        funName <- freshId
+        Name resVar <- freshId
+        eTrueStr <- cXp eTrue
+        eFalseStr <- cXp eFalse
+        let def = concat
+                [ "int ", unName funName, "(condition) {\n"
+                , "    int ", resVar, ";\n"
+                , "    if (condition) {\n"
+                , "        ", resVar, " = ", eTrueStr, ";\n"
+                , "    else {\n"
+                , "        ", resVar, " = ", eFalseStr, ";\n"
+                , "    }\n"
+                , "    return ", resVar, ";\n"
+                , "}\n"
+                ]
+        Lens.Mtl.modifying cmDefs (def :)
+
+        condStr <- cXp cond
+        pure $ concat [unName funName, "(", condStr, ")"]
+
     Case (scrutName, scrut) matches -> do
         funName <- freshId
 

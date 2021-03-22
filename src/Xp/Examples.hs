@@ -217,6 +217,18 @@ instance Partition PartTemp Int where
             , TempHot  var
             ]
 
+-- | Re-implementation of watering example, but with if/then/else.
+water2 :: Xp Temp -> Xp Moisture -> Hiska (Xp Bool)
+water2 temp moistLvl = pure $
+    ifte moistureOk
+        (ifte tempHot
+            (temp >. 35 &&. moistLvl <. 0.5)
+            (xval False))
+        (xval True)
+  where
+    tempHot = temp >. 25
+    moistureOk = moistLvl <. 0.2
+
 --
 -- * Example 4
 --
@@ -244,3 +256,10 @@ instance ToStruct Double SplitFrac where
             { sfInt = xval int
             , sfDouble = xval frac
             }
+
+{- | Return true if the input double would round upwards to the nearest
+whole number.
+-}
+-- ex4 :: Double -> Xp Bool
+-- ex4 input = case2 double $ \case
+--     SplitFrac _ frac -> case' frac $ \case
