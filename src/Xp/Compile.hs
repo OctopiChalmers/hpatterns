@@ -77,6 +77,10 @@ compile program =
         -- #include lines
         , concatMap ((++ "\n") . includeWrap) ["stdio.h"], "\n"
 
+        -- Define structs
+        , "// Structs representing product types\n"
+        , concatMap (++ "\n") (st Lens.^. cmStructs), "\n"
+
         -- Declare global variables
         , "// Variables correpsonding to scrutinees in case expressions\n"
         , concatMap (++ "\n") (st Lens.^. cmGlobals), "\n"
@@ -164,10 +168,31 @@ cXp = \case
         unless (Name (structName @pt) `M.member` existingStructs)
             (newStructDef @pt)
 
+        -- Create a global variable for the value of the scrutinee.
+        newGlobalVar (structName @pt) scrutName
 
-        undefined
+        -- Generate a function to hold the pattern matching logic.
+        funName <- freshId
+        Name argName <- freshId
+        Name resVar <- freshId
+        bodyStr <- cXp body
+        let def = concat
+                [ "int ", unName funName, "(", argName, ") {\n"
+                , "    ", scrutName, " = ", argName, ";\n"
+                , "    int ", resVar, " = ", bodyStr, ";\n"
+                , "    return ", resVar, ";\n"
+                , "}\n"
+                ]
+        Lens.Mtl.modifying cmDefs (def :)
 
-    SVar (name, _idx) -> pure name
+        pure $ concat [unName funName, "(", ")"]
+
+    SVar name -> pure name
+
+    SFieldRef (FieldRef name idx :: FieldRef pt) -> do
+        let (Field _ s _) = toFields (dummy @pt) !! idx
+        pure $ concat [name, "->", s]
+
   where
     binOp :: (Show a, Show b) => String -> Xp a -> Xp b -> Compile String
     binOp op e1 e2 = do
@@ -189,7 +214,7 @@ newCaseFun :: forall b .
 newCaseFun (Name funName) (scrutName, matches) = do
     resVar <- freshId
     matchesStr <- mapM (cMatch resVar) matches
-    newGlobalVar scrutName
+    newGlobalVar "int" scrutName
 
     Name argName <- freshId
 
@@ -215,10 +240,10 @@ newCaseFun (Name funName) (scrutName, matches) = do
         bodyStr <- cXp body
         pure $ mconcat ["if (", condStr, ") { ", resVar, " = ", bodyStr, "; } else\n"]
 
-newGlobalVar :: String -> Compile ()
-newGlobalVar s =
-    let varStr = concat ["int ", s, ";"]
-    in Lens.Mtl.modifying cmGlobals (varStr :)
+newGlobalVar :: String -> String -> Compile ()
+newGlobalVar typeStr varStr =
+    let def = concat [typeStr, " ", varStr, ";"]
+    in Lens.Mtl.modifying cmGlobals (def :)
 
 -- | Create a struct definition and add it to the compilation state.
 newStructDef :: forall pt . Struct pt => Compile ()
@@ -228,7 +253,7 @@ newStructDef = Lens.Mtl.modifying cmStructs (M.insert (Name nameStr) def)
     nameStr = structName @pt
 
     fieldsStr :: [String]
-    fieldsStr = map showField $ toFields (symStruct @pt)
+    fieldsStr = map showField $ toFields (dummy @pt)
       where
         showField :: Field -> String
         showField (Field t s _) = showTRep t ++ " " ++ s ++ ";\n"

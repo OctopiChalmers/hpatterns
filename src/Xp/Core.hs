@@ -59,9 +59,16 @@ data Xp a where
     Var :: String -> Xp a
 
     {- | Symbolic variable. These are used to refer to other expressions,
-    such as the scrutinee in a case construct.
+    such as the scrutinee in a case construct. Requires the referee to be
+    a variable (so that it can be named).
     -}
-    SVar :: (String, Int) -> Xp a
+    SVar ::
+           String  -- ^ The name of the variable that is being referenced.
+        -> Xp a
+
+    SFieldRef :: (Struct pt)
+        => FieldRef pt
+        -> Xp a
 
     -- | Representation of a case-expression.
     Case :: (Show a)
@@ -116,21 +123,13 @@ instance Fractional a => Fractional (Xp a) where
 class Struct pt => ToStruct a pt where
     toStruct :: a -> pt
 
-{- | Create a symbolic value of a struct type. A symbolic value is a fully
-applied constructor, where all aruments are SVars.
--}
-symStruct :: forall pt . Struct pt => pt
-symStruct =
-    fromFields
-    $ zipWith (\ idx (Field t s _) -> Field t s (SVar (s, idx))) [0 ..]
-    $ toFields (dummy @pt)
-
 class Struct pt where
     structName :: String
     toFields :: pt -> Fields pt
     fromFields :: Fields pt -> pt
 
     dummy :: pt  -- Generate this with GHC generics? Or maybe TH?
+                 -- We only want the types and names of the fields here.
 
 type Fields a = [Field]
 data Field = forall a . Show a => Field
@@ -149,6 +148,39 @@ showTRep :: TRep a -> String
 showTRep TBool = "bool"
 showTRep TInt = "int"
 showTRep TDouble = "double"
+
+data FieldRef a = FieldRef
+    String  -- ^ Name of the variable being referenced.
+    Int     -- ^ Index of struct, i.e. which field of the struct.
+    deriving Show
+
+case2 :: forall pt a b .
+    ( ToStruct a pt
+    , Show pt
+    )
+    => a
+    -> (pt -> Xp b)
+    -> Hiska (Xp b)
+case2 scrut f = do
+    let inputStruct = toStruct @a @pt scrut
+
+    scrutName <- freshId
+
+    let body = f (symStruct scrutName)
+
+    pure $ Case2 (scrutName, xval inputStruct) body
+  where
+    -- Create an instance of the struct type with all fields as symbolic
+    -- references (SFieldRef) pointing to the scrutinee.
+    symStruct :: String -> pt
+    symStruct scrutName =
+        fromFields
+        $ zipWith mkSymField [0 ..]
+        $ toFields (dummy @pt)
+      where
+        mkSymField :: Int -> Field -> Field
+        mkSymField idx (Field t s _) =
+            Field t s $ SFieldRef @pt $ FieldRef scrutName idx
 
 --
 -- * Partitioning
@@ -178,22 +210,6 @@ data PartitionData p a = PartitionData
     -- ^ All constructors of type (p a), fully applied on 'SVar's where
     -- applicable.
 
-case2 :: forall pt a b .
-    ( ToStruct a pt
-    , Show pt
-    )
-    => a
-    -> (pt -> Xp b)
-    -> Hiska (Xp b)
-case2 scrut f = do
-    let inputStruct = toStruct @a @pt scrut
-
-    let body = f (symStruct @pt)
-
-    scrutName <- freshId
-
-    pure $ Case2 (scrutName, xval inputStruct) body
-
 --
 -- * Combinators
 --
@@ -212,7 +228,7 @@ case' scrut f = do
 
     -- Generate the predicates and applied constructors for the input parition
     -- type.
-    let PartitionData preds constructors = partition @p @a $ SVar (scrutName, 0)
+    let PartitionData preds constructors = partition @p @a (SVar scrutName)
 
     -- Generate the bodies of the matches by applying the input function
     -- to every possible constructor; compare to The Trick.
