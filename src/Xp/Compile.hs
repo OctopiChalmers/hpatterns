@@ -3,20 +3,25 @@
 Doofus implementation, basically just concatenating strings.
 -}
 
+{-# LANGUAGE AllowAmbiguousTypes        #-}
 {-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TemplateHaskell            #-}
+{-# LANGUAGE TypeApplications           #-}
 
 module Xp.Compile where
 
 import qualified Control.Monad.Reader as R
 import qualified Control.Monad.State.Strict as St
+import qualified Data.Map.Strict as M
 import qualified Lens.Micro as Lens
 import qualified Lens.Micro.Mtl as Lens.Mtl
 import qualified Lens.Micro.TH as Lens.TH
+
+import Control.Monad (unless)
 
 import Xp.Core hiding (freshId)
 
@@ -40,6 +45,8 @@ data Cm = Cm
     -- ^ Function definitions added as necssary.
     , _cmGlobals :: [String]
     -- ^ Global variable declarations.
+    , _cmStructs :: M.Map Name String
+    -- ^ Definitions for structs. Maps name of struct (type) to definition.
     }
 $(Lens.TH.makeLenses ''Cm)
 
@@ -86,8 +93,9 @@ compile program =
     initCm :: Cm
     initCm = Cm
         { _cmCounter = 0
-        , _cmDefs = []
+        , _cmDefs    = []
         , _cmGlobals = []
+        , _cmStructs = M.empty
         }
 
     includeWrap :: String -> String
@@ -149,6 +157,16 @@ cXp = \case
 
         pure $ mconcat [unName funName, "(", scrutStr, ")"]
 
+    Case2 (scrutName, (scrut :: Xp pt)) body -> do
+        -- Generate the definition of the struct if it's the first time
+        -- encountered.
+        existingStructs <- Lens.Mtl.use cmStructs
+        unless (Name (structName @pt) `M.member` existingStructs)
+            (newStructDef @pt)
+
+
+        undefined
+
     SVar (name, _idx) -> pure name
   where
     binOp :: (Show a, Show b) => String -> Xp a -> Xp b -> Compile String
@@ -201,3 +219,23 @@ newGlobalVar :: String -> Compile ()
 newGlobalVar s =
     let varStr = concat ["int ", s, ";"]
     in Lens.Mtl.modifying cmGlobals (varStr :)
+
+-- | Create a struct definition and add it to the compilation state.
+newStructDef :: forall pt . Struct pt => Compile ()
+newStructDef = Lens.Mtl.modifying cmStructs (M.insert (Name nameStr) def)
+  where
+    nameStr :: String
+    nameStr = structName @pt
+
+    fieldsStr :: [String]
+    fieldsStr = map showField $ toFields (symStruct @pt)
+      where
+        showField :: Field -> String
+        showField (Field t s _) = showTRep t ++ " " ++ s ++ ";\n"
+
+    def :: String
+    def = concat
+            [ "struct ", nameStr, " {\n"
+            , concatMap ("    " ++) fieldsStr
+            , "};\n"
+            ]
