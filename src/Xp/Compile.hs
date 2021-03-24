@@ -22,6 +22,8 @@ import qualified Lens.Micro.Mtl as Lens.Mtl
 import qualified Lens.Micro.TH as Lens.TH
 
 import Control.Monad (unless)
+import Data.List (intercalate)
+import Data.Proxy
 
 import Xp.Core hiding (freshId)
 
@@ -161,17 +163,23 @@ cXp = \case
 
         pure $ mconcat [unName funName, "(", scrutStr, ")"]
 
-    Case2 (scrutName, (scrut :: Xp pt)) body -> do
+    Case2 (Proxy :: Proxy pt) (scrutName, (transformee :: Xp t)) body -> do
         -- Generate the definition of the struct if it's the first time
         -- encountered.
         existingStructs <- Lens.Mtl.use cmStructs
         unless (Name (structName @pt) `M.member` existingStructs)
             (newStructDef @pt)
 
-        -- Create a global variable for the value of the scrutinee.
-        newGlobalVar (structName @pt) scrutName
+        -- Create function to transform value to struct!
+        structReturnerFunName <- freshId
+        newStructReturnerDef @t @pt structReturnerFunName
+        transformeeStr <- cXp transformee
+        let getStructCall = concat
+                [unName structReturnerFunName, "(", transformeeStr, ")"]
 
-        -- Generate a function to hold the pattern matching logic.
+
+        -- Create function for the pattern matching logic!
+        newGlobalVar (structName @pt) scrutName
         funName <- freshId
         Name argName <- freshId
         Name resVar <- freshId
@@ -185,13 +193,16 @@ cXp = \case
                 ]
         Lens.Mtl.modifying cmDefs (def :)
 
-        pure $ concat [unName funName, "(", ")"]
+        -- TODO: HOW TO CONVERT FROM INPUT VALUE (double) TO STRUCT TYPE?
+        pure $ concat [unName funName, "(", getStructCall, ")"]
 
     SVar name -> pure name
 
     SFieldRef (FieldRef name idx :: FieldRef pt) -> do
         let (Field _ s _) = toFields (dummy @pt) !! idx
         pure $ concat [name, "->", s]
+
+    s -> error $ "cXp: unexpected value `" ++ show s ++ "`"
 
   where
     binOp :: (Show a, Show b) => String -> Xp a -> Xp b -> Compile String
@@ -240,10 +251,58 @@ newCaseFun (Name funName) (scrutName, matches) = do
         bodyStr <- cXp body
         pure $ mconcat ["if (", condStr, ") { ", resVar, " = ", bodyStr, "; } else\n"]
 
-newGlobalVar :: String -> String -> Compile ()
+-- TODO: TYPE THINGS. IT IS HARD WHEN EVERYTHING IS A STRING.
+{- | Add a global variable to the compilation state, given the name of the
+variable's type, and the variable name.
+-}
+newGlobalVar ::
+       String
+    -- ^ Type of variable.
+    -> String
+    -- ^ Name of variable.
+    -> Compile ()
 newGlobalVar typeStr varStr =
     let def = concat [typeStr, " ", varStr, ";"]
     in Lens.Mtl.modifying cmGlobals (def :)
+
+{- | Create a function which returns a pointer to a struct instance, and add
+it to the compilation state.
+-}
+newStructReturnerDef :: forall t pt . ToStruct t pt
+    => Name        -- ^ Name of function.
+    -> Compile ()
+newStructReturnerDef (Name funName) = do
+    Name transformeeId <- freshId
+
+    -- v This shouldn't be done here, do it before saving it in the AST.
+    let struct = toStruct @t @pt (SVar transformeeId)
+
+    -- HARDCODED TYPE (double). Introduce types to the AST to fix (TODO).
+    newGlobalVar "double" transformeeId
+
+    Name resVar <- freshId
+    instantiation <- instStruct struct
+    let argName = "arg"
+    let def = concat
+            [ structName @pt, "* ", funName, "(arg) {\n"
+                -- TODO: again, hardcoded type
+            , "    ", transformeeId, " = arg;\n"
+            , "    ", structName @pt, " ", resVar, " = ", instantiation, ";\n"
+            , "    return ", resVar, ";\n"
+            , "}\n"
+            ]
+    Lens.Mtl.modifying cmDefs (def :)
+
+  where
+    instStruct :: pt -> Compile String
+    instStruct struct = do
+        insts <- mapM instField (toFields struct)
+        pure $ concat ["{ ", intercalate ", " insts, " }"]
+
+    instField :: Field -> Compile String
+    instField (Field _ s v) = do
+        vStr <- cXp v
+        pure $ ('.' : s) ++ " = " ++ vStr
 
 -- | Create a struct definition and add it to the compilation state.
 newStructDef :: forall pt . Struct pt => Compile ()
@@ -260,7 +319,7 @@ newStructDef = Lens.Mtl.modifying cmStructs (M.insert (Name nameStr) def)
 
     def :: String
     def = concat
-            [ "struct ", nameStr, " {\n"
+            [ "typedef struct ", nameStr, " {\n"
             , concatMap ("    " ++) fieldsStr
-            , "};\n"
+            , "}", nameStr, ";\n"
             ]

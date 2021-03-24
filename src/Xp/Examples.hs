@@ -251,17 +251,20 @@ instance Struct SplitFrac where
     dummy = SplitFrac undefined undefined
 
 instance ToStruct Double SplitFrac where
-    toStruct double =
-        let (int, frac) = properFraction double
-        in SplitFrac
-            { sfInt = xval int
-            , sfDouble = xval frac
-            }
+    -- | Split a double into its integer and fractional part
+    toStruct double = SplitFrac int frac
+      where
+        int :: Xp Int
+        int = cast TInt double
+
+        frac :: Xp Double
+        frac = double - (cast TDouble int)
+
 
 {- | Return true if the fractional part of the input would round upwards
 to the nearest whole number.
 -}
-ex4 :: Double -> Hiska (Xp Bool)
+ex4 :: Xp Double -> Hiska (Xp Bool)
 ex4 input = case2 input $ \case
     SplitFrac _ frac ->
         ifte (frac >. 0.5)

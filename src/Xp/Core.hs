@@ -20,7 +20,7 @@ import qualified Lens.Micro as Lens
 import qualified Lens.Micro.Mtl as Lens
 import qualified Lens.Micro.TH as Lens
 
-import Data.Word
+import Data.Proxy
 
 
 --
@@ -58,6 +58,14 @@ data Xp a where
     Val :: a -> Xp a
     Var :: String -> Xp a
 
+    -- | Dangerous?
+    Cast ::
+        ( Show a
+        )
+        => TRep b
+        -> Xp a
+        -> Xp b
+
     {- | Symbolic variable. These are used to refer to other expressions,
     such as the scrutinee in a case construct. Requires the referee to be
     a variable (so that it can be named).
@@ -80,8 +88,9 @@ data Xp a where
         -- The body of the match uses 'SVar's to refer to the scrutinee.
         -> Xp b
 
-    Case2 :: (Show pt, Struct pt)
-        => (String, Xp pt)
+    Case2 :: (Show a, ToStruct a pt)
+        => Proxy pt
+        -> (String, Xp a)
         -> Xp b
         -> Xp b
 
@@ -121,7 +130,9 @@ instance Fractional a => Fractional (Xp a) where
 --
 
 class Struct pt => ToStruct a pt where
-    toStruct :: a -> pt
+    -- TODO: This function probably needs to be expressed in the expression
+    -- language, since we need to generate C code that can make the conversion.
+    toStruct :: Xp a -> pt
 
 class Struct pt where
     structName :: String
@@ -156,19 +167,18 @@ data FieldRef a = FieldRef
 
 case2 :: forall pt a b .
     ( ToStruct a pt
-    , Show pt
+    , Show a
     )
-    => a
+    => Xp a
     -> (pt -> Xp b)
     -> Hiska (Xp b)
 case2 scrut f = do
-    let inputStruct = toStruct @a @pt scrut
 
     scrutName <- freshId
 
     let body = f (symStruct scrutName)
 
-    pure $ Case2 (scrutName, xval inputStruct) body
+    pure $ Case2 (Proxy @pt) (scrutName, scrut) body
   where
     -- Create an instance of the struct type with all fields as symbolic
     -- references (SFieldRef) pointing to the scrutinee.
@@ -271,3 +281,6 @@ xval = Val
 
 ifte :: Xp Bool -> Xp a -> Xp a -> Xp a
 ifte = IfThenElse
+
+cast :: Show a => TRep b -> Xp a -> Xp b
+cast = Cast
