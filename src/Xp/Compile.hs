@@ -21,12 +21,14 @@ import qualified Lens.Micro as Lens
 import qualified Lens.Micro.Mtl as Lens.Mtl
 import qualified Lens.Micro.TH as Lens.TH
 
+import qualified Xp.Core as X
+
 import Control.Monad (unless)
 import Data.Char (toLower)
 import Data.List (intercalate)
 import Data.Proxy
 
-import Xp.Core hiding (freshId)
+import Xp.Core (Xp)
 
 
 --
@@ -123,20 +125,20 @@ definitions are generated as needed and added to the compilation state.
 -}
 cXp :: Show a => Xp a -> Compile String
 cXp = \case
-    Val v -> pure $ map toLower $ show v  -- Hack to get """C bool literals"""
-    Var s -> pure $ s
-    Add e1 e2 -> binOp "+" e1 e2
-    Mul e1 e2 -> binOp "*" e1 e2
-    Sub e1 e2 -> binOp "-" e1 e2
-    Div e1 e2 -> binOp "/" e1 e2
-    Gt  e1 e2 -> binOp ">" e1 e2
-    Lt  e1 e2 -> binOp "<" e1 e2
-    Eq  e1 e2 -> binOp "==" e1 e2
-    And e1 e2 -> binOp "&&" e1 e2
-    Or  e1 e2 -> binOp "||" e1 e2
-    Not e -> ("(!" ++) . (++ ")") <$> cXp e
+    X.Val v -> pure $ map toLower $ show v  -- Hack to get """C bool literals"""
+    X.Var s -> pure $ s
+    X.Add e1 e2 -> binOp "+" e1 e2
+    X.Mul e1 e2 -> binOp "*" e1 e2
+    X.Sub e1 e2 -> binOp "-" e1 e2
+    X.Div e1 e2 -> binOp "/" e1 e2
+    X.Gt  e1 e2 -> binOp ">" e1 e2
+    X.Lt  e1 e2 -> binOp "<" e1 e2
+    X.Eq  e1 e2 -> binOp "==" e1 e2
+    X.And e1 e2 -> binOp "&&" e1 e2
+    X.Or  e1 e2 -> binOp "||" e1 e2
+    X.Not e -> ("(!" ++) . (++ ")") <$> cXp e
 
-    IfThenElse cond eTrue eFalse -> do
+    X.IfThenElse cond eTrue eFalse -> do
         funName <- freshId
         Name resVar <- freshId
         eTrueStr <- cXp eTrue
@@ -159,7 +161,7 @@ cXp = \case
         condStr <- cXp cond
         pure $ concat [unName funName, "(", condStr, ")"]
 
-    Case (Scrut scrutName scrut) matches -> do
+    X.Case (X.Scrut scrutName scrut) matches -> do
         funName <- freshId
 
         newCaseFun funName (scrutName, matches)
@@ -167,8 +169,8 @@ cXp = \case
 
         pure $ mconcat [unName funName, "(", scrutStr, ")"]
 
-    Case2 (Proxy :: Proxy pt) (Scrut scrutName (transformee :: Xp t)) body -> do
-        let sName = structName @pt
+    X.Case2 (Proxy :: Proxy pt) (X.Scrut scrutName (transformee :: Xp t)) body -> do
+        let sName = X.structName @pt
 
         -- Generate the definition of the struct if it's the first time
         -- encountered.
@@ -200,15 +202,15 @@ cXp = \case
         Lens.Mtl.modifying cmDefs (def :)
         pure $ concat [unName funName, "(", getStructCall, ")"]
 
-    SVar name -> pure name
+    X.SVar name -> pure name
 
-    SFieldRef (FieldRef name idx :: FieldRef pt) -> do
-        let (Field _ s _) = toFields (dummy @pt) !! idx
+    X.SFieldRef (X.FieldRef name idx :: X.FieldRef pt) -> do
+        let (X.Field _ s _) = X.toFields (X.dummy @pt) !! idx
         pure $ concat [name, "->", s]
 
-    Cast t e -> do
+    X.Cast t e -> do
         eStr <- cXp e
-        pure $ concat ["((", showTRep t, ") ", eStr, ")"]
+        pure $ concat ["((", X.showTRep t, ") ", eStr, ")"]
 
   where
     binOp :: (Show a, Show b) => String -> Xp a -> Xp b -> Compile String
@@ -274,21 +276,21 @@ newGlobalVar typeStr varStr =
 {- | Create a function which returns a pointer to a struct instance, and add
 it to the compilation state.
 -}
-newStructReturnerDef :: forall t pt . ToStruct t pt
+newStructReturnerDef :: forall t pt . X.ToStruct t pt
     => Name        -- ^ Name of function.
     -> Compile ()
 newStructReturnerDef (Name funName) = do
     Name transformeeId <- freshId
 
     -- v This shouldn't be done here, do it before saving it in the AST.
-    let struct = toStruct @t @pt (SVar transformeeId)
-    let sName= structName @pt
+    let struct = X.toStruct @t @pt (X.SVar transformeeId)
+    let sName = X.structName @pt
 
     -- HARDCODED TYPE (double). Introduce types to the AST to fix (TODO).
     newGlobalVar "double" transformeeId
 
     Name resVar <- freshId
-    insts <- mapM instField (toFields @pt struct)
+    insts <- mapM instField (X.toFields @pt struct)
     let argName = "arg"
     let def = concat
                 -- TODO: again, hardcoded type
@@ -302,23 +304,23 @@ newStructReturnerDef (Name funName) = do
             ]
     Lens.Mtl.modifying cmDefs (def :)
   where
-    instField :: Field -> Compile String
-    instField (Field _ s v) = do
+    instField :: X.Field -> Compile String
+    instField (X.Field _ s v) = do
         vStr <- cXp v
         pure $ concat ["->", s, " = ", vStr]
 
 -- | Create a struct definition and add it to the compilation state.
-newStructDef :: forall pt . Struct pt => Compile ()
+newStructDef :: forall pt . X.Struct pt => Compile ()
 newStructDef = Lens.Mtl.modifying cmStructs (M.insert (Name nameStr) def)
   where
     nameStr :: String
-    nameStr = structName @pt
+    nameStr = X.structName @pt
 
     fieldsStr :: [String]
-    fieldsStr = map showField $ toFields (dummy @pt)
+    fieldsStr = map showField $ X.toFields (X.dummy @pt)
       where
-        showField :: Field -> String
-        showField (Field t s _) = showTRep t ++ " " ++ s ++ ";\n"
+        showField :: X.Field -> String
+        showField (X.Field t s _) = X.showTRep t ++ " " ++ s ++ ";\n"
 
     def :: String
     def = concat
