@@ -22,6 +22,7 @@ import qualified Lens.Micro.Mtl as Lens.Mtl
 import qualified Lens.Micro.TH as Lens.TH
 
 import Control.Monad (unless)
+import Data.Char (toLower)
 import Data.List (intercalate)
 import Data.Proxy
 
@@ -77,7 +78,8 @@ compile program =
         [ "\n// Code generated from Xp program \n\n"
 
         -- #include lines
-        , concatMap ((++ "\n") . includeWrap) ["stdio.h"], "\n"
+        , concatMap ((++ "\n") . includeWrap)
+            ["stdbool.h", "stdlib.h", "stdio.h"], "\n"
 
         -- Define structs
         , "// Structs representing product types\n"
@@ -121,7 +123,7 @@ definitions are generated as needed and added to the compilation state.
 -}
 cXp :: Show a => Xp a -> Compile String
 cXp = \case
-    Val v -> pure $ show v
+    Val v -> pure $ map toLower $ show v  -- Hack to get """C bool literals"""
     Var s -> pure $ s
     Add e1 e2 -> binOp "+" e1 e2
     Mul e1 e2 -> binOp "*" e1 e2
@@ -140,10 +142,12 @@ cXp = \case
         eTrueStr <- cXp eTrue
         eFalseStr <- cXp eFalse
         let def = concat
-                [ "int ", unName funName, "(condition) {\n"
+                -- TODO: Hardcoded types (do typing)
+                [ "int ", unName funName, "(int condition) {\n"
                 , "    int ", resVar, ";\n"
                 , "    if (condition) {\n"
                 , "        ", resVar, " = ", eTrueStr, ";\n"
+                , "    }\n"
                 , "    else {\n"
                 , "        ", resVar, " = ", eFalseStr, ";\n"
                 , "    }\n"
@@ -164,10 +168,12 @@ cXp = \case
         pure $ mconcat [unName funName, "(", scrutStr, ")"]
 
     Case2 (Proxy :: Proxy pt) (scrutName, (transformee :: Xp t)) body -> do
+        let sName = structName @pt
+
         -- Generate the definition of the struct if it's the first time
         -- encountered.
         existingStructs <- Lens.Mtl.use cmStructs
-        unless (Name (structName @pt) `M.member` existingStructs)
+        unless (Name (sName) `M.member` existingStructs)
             (newStructDef @pt)
 
         -- Create function to transform value to struct!
@@ -177,23 +183,21 @@ cXp = \case
         let getStructCall = concat
                 [unName structReturnerFunName, "(", transformeeStr, ")"]
 
-
         -- Create function for the pattern matching logic!
-        newGlobalVar (structName @pt) scrutName
+        newGlobalVar (sName ++ "*") scrutName
         funName <- freshId
         Name argName <- freshId
         Name resVar <- freshId
         bodyStr <- cXp body
         let def = concat
-                [ "int ", unName funName, "(", argName, ") {\n"
+                -- Hardcoded type (TODO)
+                [ "int ", unName funName, "(", sName, "* ", argName, ") {\n"
                 , "    ", scrutName, " = ", argName, ";\n"
                 , "    int ", resVar, " = ", bodyStr, ";\n"
                 , "    return ", resVar, ";\n"
                 , "}\n"
                 ]
         Lens.Mtl.modifying cmDefs (def :)
-
-        -- TODO: HOW TO CONVERT FROM INPUT VALUE (double) TO STRUCT TYPE?
         pure $ concat [unName funName, "(", getStructCall, ")"]
 
     SVar name -> pure name
@@ -205,8 +209,6 @@ cXp = \case
     Cast t e -> do
         eStr <- cXp e
         pure $ concat ["((", showTRep t, ") ", eStr, ")"]
-
-    s -> error $ "cXp: unexpected value `" ++ show s ++ "`"
 
   where
     binOp :: (Show a, Show b) => String -> Xp a -> Xp b -> Compile String
@@ -280,33 +282,30 @@ newStructReturnerDef (Name funName) = do
 
     -- v This shouldn't be done here, do it before saving it in the AST.
     let struct = toStruct @t @pt (SVar transformeeId)
+    let sName= structName @pt
 
     -- HARDCODED TYPE (double). Introduce types to the AST to fix (TODO).
     newGlobalVar "double" transformeeId
 
     Name resVar <- freshId
-    instantiation <- instStruct struct
+    insts <- mapM instField (toFields @pt struct)
     let argName = "arg"
     let def = concat
-            [ structName @pt, "* ", funName, "(arg) {\n"
                 -- TODO: again, hardcoded type
+            [ sName, "* ", funName, "(double arg) {\n"
             , "    ", transformeeId, " = arg;\n"
-            , "    ", structName @pt, " ", resVar, " = ", instantiation, ";\n"
+            -- TODO: SET UP free() SOMEHOW SO WE DON'T GET MEMORY LEAKS HERE
+            , "    ", sName, "* ", resVar, " = malloc(sizeof(", sName, "));\n"
+            , concatMap (\ xs -> "    " ++ resVar ++ xs ++ ";\n") insts
             , "    return ", resVar, ";\n"
             , "}\n"
             ]
     Lens.Mtl.modifying cmDefs (def :)
-
   where
-    instStruct :: pt -> Compile String
-    instStruct struct = do
-        insts <- mapM instField (toFields struct)
-        pure $ concat ["{ ", intercalate ", " insts, " }"]
-
     instField :: Field -> Compile String
     instField (Field _ s v) = do
         vStr <- cXp v
-        pure $ ('.' : s) ++ " = " ++ vStr
+        pure $ concat ["->", s, " = ", vStr]
 
 -- | Create a struct definition and add it to the compilation state.
 newStructDef :: forall pt . Struct pt => Compile ()

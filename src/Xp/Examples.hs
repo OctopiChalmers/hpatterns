@@ -28,6 +28,9 @@ import Xp.ExamplesTypes
 import Xp.TH
 
 
+writeProg :: Show a => FilePath -> Hiska (Xp a) -> IO ()
+writeProg fp = writeFile fp . compile . runHiska
+
 printProg :: Show a => Hiska (Xp a) -> IO ()
 printProg = putStrLn . compile . runHiska
 
