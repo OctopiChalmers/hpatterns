@@ -80,7 +80,7 @@ data Xp a where
 
     -- | Representation of a case-expression.
     Case :: (Show a)
-        => (String, Xp a)
+        => Scrut a
         -- ^ Scrutinee tagged with a name. The scrutinee needs to be tagged
         -- so that we know how to refer to it in the body of the matches.
         -> [(Xp Bool, Xp b)]
@@ -90,7 +90,7 @@ data Xp a where
 
     Case2 :: (Show a, ToStruct a pt)
         => Proxy pt
-        -> (String, Xp a)
+        -> Scrut a
         -> Xp b
         -> Xp b
 
@@ -125,20 +125,39 @@ instance Fractional a => Fractional (Xp a) where
     fromRational xrat = Val (fromRational xrat)
     (/) = Div
 
+-- | Data type representing the scrutinee in a case construct.
+data Scrut a = Scrut
+    String
+    -- ^ Scrutinee name. Used by other constructs to refer to the scrutinee.
+    (Xp a)
+    -- ^ Value of the scrutinee.
+    deriving Show
+
 --
 -- * Struct type representation
 --
 
+{- | Instances of @ToStruct a pt@ define translations from type @a@ to struct
+type @b@.
+-}
 class Struct pt => ToStruct a pt where
-    -- TODO: This function probably needs to be expressed in the expression
-    -- language, since we need to generate C code that can make the conversion.
     toStruct :: Xp a -> pt
 
+-- | Class for types that can represent a product/struct type.
 class Struct pt where
+    -- | Struct types must define their name.
     structName :: String
+
+    -- | Struct types must define how they convert to a list of 'Field's.
     toFields :: pt -> Fields pt
+
+    -- | Struct types must define how they convert from a list of 'Field's.
     fromFields :: Fields pt -> pt
 
+    {- | Struct types must define a dummy value, used only for its structure.
+    The values of its 'Field's can be undefined. The dummy values should not
+    be used.
+    -}
     dummy :: pt  -- Generate this with GHC generics? Or maybe TH?
                  -- We only want the types and names of the fields here.
 
@@ -165,6 +184,7 @@ data FieldRef a = FieldRef
     Int     -- ^ Index of struct, i.e. which field of the struct.
     deriving Show
 
+-- | Case analysis on a scrutinee that can be translated to a struct type.
 case2 :: forall pt a b .
     ( ToStruct a pt
     , Show a
@@ -173,12 +193,11 @@ case2 :: forall pt a b .
     -> (pt -> Xp b)
     -> Hiska (Xp b)
 case2 scrut f = do
-
     scrutName <- freshId
 
     let body = f (symStruct scrutName)
 
-    pure $ Case2 (Proxy @pt) (scrutName, scrut) body
+    pure $ Case2 (Proxy @pt) (Scrut scrutName scrut) body
   where
     -- Create an instance of the struct type with all fields as symbolic
     -- references (SFieldRef) pointing to the scrutinee.
@@ -220,10 +239,7 @@ data PartitionData p a = PartitionData
     -- ^ All constructors of type (p a), fully applied on 'SVar's where
     -- applicable.
 
---
--- * Combinators
---
-
+-- | Case analysis on a partition-able scrutinee.
 case' :: forall p a b .
     ( Partition p a
     , Show a
@@ -244,7 +260,11 @@ case' scrut f = do
     -- to every possible constructor; compare to The Trick.
     bodies <- mapM f constructors
 
-    pure $ Case (scrutName, scrut) (zip preds bodies)
+    pure $ Case (Scrut scrutName scrut) (zip preds bodies)
+
+--
+-- * Other combinators
+--
 
 infix 4 >.
 (>.) :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool

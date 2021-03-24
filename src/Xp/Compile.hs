@@ -159,7 +159,7 @@ cXp = \case
         condStr <- cXp cond
         pure $ concat [unName funName, "(", condStr, ")"]
 
-    Case (scrutName, scrut) matches -> do
+    Case (Scrut scrutName scrut) matches -> do
         funName <- freshId
 
         newCaseFun funName (scrutName, matches)
@@ -167,7 +167,7 @@ cXp = \case
 
         pure $ mconcat [unName funName, "(", scrutStr, ")"]
 
-    Case2 (Proxy :: Proxy pt) (scrutName, (transformee :: Xp t)) body -> do
+    Case2 (Proxy :: Proxy pt) (Scrut scrutName (transformee :: Xp t)) body -> do
         let sName = structName @pt
 
         -- Generate the definition of the struct if it's the first time

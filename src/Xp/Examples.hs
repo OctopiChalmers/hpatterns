@@ -263,13 +263,12 @@ instance ToStruct Double SplitFrac where
         frac :: Xp Double
         frac = double - (cast TDouble int)
 
-
 {- | Return true if the fractional part of the input would round upwards
 to the nearest whole number.
 -}
 ex4 :: Xp Double -> Hiska (Xp Bool)
 ex4 input = case2 input $ \case
-    SplitFrac _ frac ->
+    SplitFrac int frac ->
         ifte (frac >. 0.5)
             (xval True)
             (xval False)
