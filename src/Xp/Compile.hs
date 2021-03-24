@@ -202,6 +202,10 @@ cXp = \case
         let (Field _ s _) = toFields (dummy @pt) !! idx
         pure $ concat [name, "->", s]
 
+    Cast t e -> do
+        eStr <- cXp e
+        pure $ concat ["((", showTRep t, ") ", eStr, ")"]
+
     s -> error $ "cXp: unexpected value `" ++ show s ++ "`"
 
   where
@@ -321,5 +325,5 @@ newStructDef = Lens.Mtl.modifying cmStructs (M.insert (Name nameStr) def)
     def = concat
             [ "typedef struct ", nameStr, " {\n"
             , concatMap ("    " ++) fieldsStr
-            , "}", nameStr, ";\n"
+            , "} ", nameStr, ";\n"
             ]
