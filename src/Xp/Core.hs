@@ -55,12 +55,13 @@ freshId = do
 --
 
 data Xp a where
-    Val :: a -> Xp a
-    Var :: String -> Xp a
+    Val :: (CType a) => a -> Xp a
+    Var :: (CType a) => String -> Xp a
 
     -- | Dangerous?
     Cast ::
         ( Show a
+        , CType b
         )
         => TRep b
         -> Xp a
@@ -74,12 +75,19 @@ data Xp a where
            String  -- ^ The name of the variable that is being referenced.
         -> Xp a
 
-    SFieldRef :: (Struct pt)
+    SFieldRef ::
+        ( Struct pt
+        , CType a
+        )
         => FieldRef pt
         -> Xp a
 
     -- | Representation of a case-expression.
-    Case :: (Show a)
+    Case ::
+        ( Show a
+        , CType a
+        , CType b
+        )
         => Scrut a
         -- ^ Scrutinee tagged with a name. The scrutinee needs to be tagged
         -- so that we know how to refer to it in the body of the matches.
@@ -88,42 +96,39 @@ data Xp a where
         -- The body of the match uses 'SVar's to refer to the scrutinee.
         -> Xp b
 
-    Case2 :: (Show a, ToStruct a pt)
+    Case2 ::
+        ( Show a
+        , ToStruct a pt
+        , CType a
+        , CType b
+        )
         => Proxy pt
+        -- ^ Type of the struct being deconstructed. Needed so that the type
+        -- can be brought into scope during compilation.
         -> Scrut a
         -> Xp b
         -> Xp b
 
     IfThenElse ::
-           Xp Bool
+        ( CType a
+        )
+        => Xp Bool
         -> Xp a
         -> Xp a
         -> Xp a
 
     -- Primitive operators.
-    Add :: (Num a) =>         Xp a -> Xp a -> Xp a
-    Mul :: (Num a) =>         Xp a -> Xp a -> Xp a
-    Sub :: (Num a) =>         Xp a -> Xp a -> Xp a
-    Div :: (Fractional a) =>  Xp a -> Xp a -> Xp a
-    Gt  :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
-    Lt  :: (Show a, Num a) => Xp a -> Xp a -> Xp Bool
-    Eq  :: (Show a, Eq a) =>  Xp a -> Xp a -> Xp Bool
-    Not ::                    Xp Bool -> Xp Bool
-    And ::                    Xp Bool -> Xp Bool -> Xp Bool
-    Or  ::                    Xp Bool -> Xp Bool -> Xp Bool
+    Add :: (CType a, Num a) => Xp a -> Xp a -> Xp a
+    Mul :: (CType a, Num a) => Xp a -> Xp a -> Xp a
+    Sub :: (CType a, Num a) => Xp a -> Xp a -> Xp a
+    Div :: (Fractional a) =>        Xp a -> Xp a -> Xp a
+    Gt  :: (Show a, Num a) =>       Xp a -> Xp a -> Xp Bool
+    Lt  :: (Show a, Num a) =>       Xp a -> Xp a -> Xp Bool
+    Eq  :: (Show a, Eq a) =>        Xp a -> Xp a -> Xp Bool
+    Not ::                          Xp Bool -> Xp Bool
+    And ::                          Xp Bool -> Xp Bool -> Xp Bool
+    Or  ::                          Xp Bool -> Xp Bool -> Xp Bool
 deriving stock instance Show a => Show (Xp a)
-
-instance Num a => Num (Xp a) where
-    (+) = Add
-    (*) = Mul
-    (-) = Sub
-    fromInteger n = Val (fromInteger n)
-    abs = error "not implemented"
-    signum = error "not implemented"
-
-instance Fractional a => Fractional (Xp a) where
-    fromRational xrat = Val (fromRational xrat)
-    (/) = Div
 
 -- | Data type representing the scrutinee in a case construct.
 data Scrut a = Scrut
@@ -132,6 +137,51 @@ data Scrut a = Scrut
     (Xp a)
     -- ^ Value of the scrutinee.
     deriving Show
+
+-- ** Typing related stuff
+
+class BaseType a
+instance BaseType Int
+instance BaseType Double
+instance BaseType Bool
+
+-- | Allow only reference types of allowed base types.
+data BaseType a => RefType a
+
+-- | Translation from Haskell types to C.
+class CType a where
+    cType :: String
+
+instance CType Int where
+    cType = "int"
+
+instance CType Double where
+    cType = "double"
+
+instance CType Bool where
+    cType = "bool"
+
+instance CType a => CType (RefType a) where
+    cType = cType @a ++ "*"
+
+instance CType Char where
+    -- TODO: This is a placeholder, probably want to look over this instance
+    -- and any examples that need it.
+    cType = "char"
+
+-- ** Convenient instances
+
+instance (CType a, Num a) => Num (Xp a) where
+    (+) = Add
+    (*) = Mul
+    (-) = Sub
+    fromInteger n = Val (fromInteger n)
+    abs = error "not implemented"
+    signum = error "not implemented"
+
+instance (CType a, Fractional a) => Fractional (Xp a) where
+    fromRational xrat = Val (fromRational xrat)
+    (/) = Div
 
 --
 -- * Struct type representation
@@ -162,7 +212,7 @@ class Struct pt where
                  -- We only want the types and names of the fields here.
 
 type Fields a = [Field]
-data Field = forall a . Show a => Field
+data Field = forall a . (CType a, Show a) => Field
     (TRep a)  -- ^ Type of field as a constructor.
     String    -- ^ Name of field.
     (Xp a)    -- ^ Value of field.
@@ -188,6 +238,8 @@ data FieldRef a = FieldRef
 case2 :: forall pt a b .
     ( ToStruct a pt
     , Show a
+    , CType a
+    , CType b
     )
     => Xp a
     -> (pt -> Xp b)
@@ -242,6 +294,8 @@ data PartitionData p a = PartitionData
 -- | Case analysis on a partition-able scrutinee.
 case' :: forall p a b .
     ( Partition p a
+    , CType a
+    , CType b
     , Show a
     )
     => Xp a
@@ -293,14 +347,14 @@ infixr 2 ||.
 xnot :: Xp Bool -> Xp Bool
 xnot = Not
 
-xvar :: String -> Xp a
+xvar :: CType a => String -> Xp a
 xvar = Var
 
-xval :: a -> Xp a
+xval :: CType a => a -> Xp a
 xval = Val
 
-ifte :: Xp Bool -> Xp a -> Xp a -> Xp a
+ifte :: CType a => Xp Bool -> Xp a -> Xp a -> Xp a
 ifte = IfThenElse
 
-cast :: Show a => TRep b -> Xp a -> Xp b
+cast :: CType b => Show a => TRep b -> Xp a -> Xp b
 cast = Cast

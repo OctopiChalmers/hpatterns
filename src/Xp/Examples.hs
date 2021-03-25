@@ -76,7 +76,7 @@ data Num a => Sig a
     | Zero
     deriving (Show)
 
-instance (Num a, Show a, Eq a) => Partition Sig a where
+instance (CType a, Num a, Show a, Eq a) => Partition Sig a where
     partition var = PartitionData preds constructors
       where
         preds = [var >. 0, var <. 0, var ==. 0]
@@ -268,7 +268,4 @@ to the nearest whole number.
 -}
 ex4 :: Xp Double -> Hiska (Xp Bool)
 ex4 input = case2 input $ \case
-    SplitFrac int frac ->
-        ifte (frac >. 0.5)
-            (xval True)
-            (xval False)
+    SplitFrac int frac -> frac >. 0.5

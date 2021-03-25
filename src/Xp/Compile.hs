@@ -25,8 +25,7 @@ import qualified Xp.Core as X
 
 import Control.Monad (unless)
 import Data.Char (toLower)
-import Data.List (intercalate)
-import Data.Proxy
+import Data.Proxy (Proxy (Proxy))
 
 import Xp.Core (Xp)
 
@@ -51,7 +50,7 @@ data Cm = Cm
     , _cmGlobals :: [String]
     -- ^ Global variable declarations.
     , _cmStructs :: M.Map Name String
-    -- ^ Definitions for structs. Maps name of struct (type) to definition.
+    -- ^ Definitions for structs. Maps name of struct (its type) to definition.
     }
 $(Lens.TH.makeLenses ''Cm)
 
@@ -126,7 +125,7 @@ definitions are generated as needed and added to the compilation state.
 cXp :: Show a => Xp a -> Compile String
 cXp = \case
     X.Val v -> pure $ map toLower $ show v  -- Hack to get """C bool literals"""
-    X.Var s -> pure $ s
+    X.Var s -> pure s
     X.Add e1 e2 -> binOp "+" e1 e2
     X.Mul e1 e2 -> binOp "*" e1 e2
     X.Sub e1 e2 -> binOp "-" e1 e2
@@ -138,15 +137,15 @@ cXp = \case
     X.Or  e1 e2 -> binOp "||" e1 e2
     X.Not e -> ("(!" ++) . (++ ")") <$> cXp e
 
-    X.IfThenElse cond eTrue eFalse -> do
+    (X.IfThenElse cond eTrue eFalse :: Xp retType) -> do
         funName <- freshId
         Name resVar <- freshId
         eTrueStr <- cXp eTrue
         eFalseStr <- cXp eFalse
         let def = concat
-                -- TODO: Hardcoded types (do typing)
-                [ "int ", unName funName, "(int condition) {\n"
-                , "    int ", resVar, ";\n"
+                [ X.cType @retType, " ", unName funName,
+                    "(", X.cType @Bool, " condition) {\n"
+                , "    ", X.cType @retType, " ", resVar, ";\n"
                 , "    if (condition) {\n"
                 , "        ", resVar, " = ", eTrueStr, ";\n"
                 , "    }\n"
@@ -161,15 +160,20 @@ cXp = \case
         condStr <- cXp cond
         pure $ concat [unName funName, "(", condStr, ")"]
 
-    X.Case (X.Scrut scrutName scrut) matches -> do
+    (X.Case (X.Scrut scrutName (scrut :: Xp scrutType)) matches :: Xp retType) -> do
         funName <- freshId
 
-        newCaseFun funName (scrutName, matches)
+        newCaseFun @retType @scrutType funName (Name scrutName, matches)
         scrutStr <- cXp scrut
 
         pure $ mconcat [unName funName, "(", scrutStr, ")"]
 
-    X.Case2 (Proxy :: Proxy pt) (X.Scrut scrutName (transformee :: Xp t)) body -> do
+    X.Case2
+        (Proxy :: Proxy pt)
+        (X.Scrut scrutName (transformee :: Xp t))
+        (body :: Xp retType)
+        -> do
+
         let sName = X.structName @pt
 
         -- Generate the definition of the struct if it's the first time
@@ -189,14 +193,14 @@ cXp = \case
         newGlobalVar (sName ++ "*") scrutName
         funName <- freshId
         Name argName <- freshId
-        Name resVar <- freshId
+        Name retVar <- freshId
         bodyStr <- cXp body
+        let retType = X.cType @retType
         let def = concat
-                -- Hardcoded type (TODO)
-                [ "int ", unName funName, "(", sName, "* ", argName, ") {\n"
+                [ retType, " ", unName funName, "(", sName, "* ", argName, ") {\n"
                 , "    ", scrutName, " = ", argName, ";\n"
-                , "    int ", resVar, " = ", bodyStr, ";\n"
-                , "    return ", resVar, ";\n"
+                , "    ", retType, " ", retVar, " = ", bodyStr, ";\n"
+                , "    return ", retVar, ";\n"
                 , "}\n"
                 ]
         Lens.Mtl.modifying cmDefs (def :)
@@ -222,44 +226,55 @@ cXp = \case
 {- | Convert the body of a sum pattern match ('Xp.Case') to a new function
 definition, and add it to the compilation state.
 -}
-newCaseFun :: forall b .
-    ( Show b
+newCaseFun :: forall retType scrutType .
+    ( Show retType
+    , X.CType retType    -- Return type of function.
+    , X.CType scrutType  -- Type of scrutinee.
     )
     => Name
     -- ^ Name of function.
-    -> (String, [(Xp Bool, Xp b)])
+    -> (Name, [(Xp Bool, Xp retType)])
     -- ^ Name of scrutinee, and branches/matches of case-expression.
     -> Compile ()
-newCaseFun (Name funName) (scrutName, matches) = do
-    resVar <- freshId
-    matchesStr <- mapM (cMatch resVar) matches
-    newGlobalVar "int" scrutName
+newCaseFun (Name funName) (Name scrutName, matches) = do
+    -- Get strings for the return type and scrutinee type.
+    let retType = X.cType @retType
+    let scrutType = X.cType @scrutType
 
-    Name argName <- freshId
+    -- Generate a variable to contain the return value.
+    retVar <- freshId
+
+    -- Calculate the branches of the case.
+    matchesStr <- mapM (cMatch retVar) matches
+
+    -- Introduce a global variable to hold the value of the scrutinee. Needed
+    -- so that nested case-expressions (leading to nested function calls)
+    -- still keeps the variable in scope.
+    newGlobalVar scrutType scrutName
 
     let def = mconcat
-            [ "int ", funName, "(int ", argName, ") {\n"
-            , "    ", scrutName, " = ", argName, ";\n"
-            , "    int ", unName resVar, ";\n"
+            [ retType, " ", funName, "(", scrutType, " arg) {\n"
+            , "    ", scrutName, " = arg;\n"
+            , "    ", retType, " ", unName retVar, ";\n"
             , concatMap ("    " ++) matchesStr
-            -- Hacky thing to soak the final dangling "else"
-            -- Printout should probably not be needed; we ideally want to
-            -- perform the exhaustiveness check in Haskell instead. But it
-            -- looks a bit empty otherwise.
+
+            -- Hacky thing to soak the final dangling "else" We ideally want to
+            -- perform the exhaustiveness check in Haskell instead. But it looks
+            -- a bit empty otherwise.
             , "    { printf(\"Non-exhaustive conditions in function `",
-                funName, "`\\n\"); }\n"
-            , "    return ", unName resVar, ";\n"
+                    funName, "`\\n\"); }\n"
+
+            , "    return ", unName retVar, ";\n"
             , "}\n"
             ]
     Lens.Mtl.modifying cmDefs (def :)
   where
-    cMatch :: Name -> (Xp Bool, Xp b) -> Compile String
-    cMatch (Name resVar) (cond, body) = do
+    cMatch :: Name -> (Xp Bool, Xp retType) -> Compile String
+    cMatch (Name retVar) (cond, body) = do
         condStr <- cXp cond
         bodyStr <- cXp body
-        pure $ mconcat ["if (", condStr, ") { ", resVar, " = ", bodyStr, "; } else\n"]
+        pure $ mconcat ["if (", condStr, ") { ", retVar, " = ", bodyStr, "; } else\n"]
 
--- TODO: TYPE THINGS. IT IS HARD WHEN EVERYTHING IS A STRING.
 {- | Add a global variable to the compilation state, given the name of the
 variable's type, and the variable name.
 -}
@@ -276,30 +291,37 @@ newGlobalVar typeStr varStr =
 {- | Create a function which returns a pointer to a struct instance, and add
 it to the compilation state.
 -}
-newStructReturnerDef :: forall t pt . X.ToStruct t pt
+newStructReturnerDef :: forall transformeeType pt .
+    ( X.ToStruct transformeeType pt
+    , X.CType transformeeType
+    )
     => Name        -- ^ Name of function.
     -> Compile ()
 newStructReturnerDef (Name funName) = do
+    -- Get string for the scrutinee type
+    let transformeeType = X.cType @transformeeType
+
+    -- Introduce a global variable to hold the value of the transformee. Needed
+    -- so that nested case-expressions (leading to nested function calls)
+    -- still keeps the variable in scope.
     Name transformeeId <- freshId
+    newGlobalVar transformeeType transformeeId
 
     -- v This shouldn't be done here, do it before saving it in the AST.
-    let struct = X.toStruct @t @pt (X.SVar transformeeId)
+    let struct = X.toStruct @transformeeType @pt (X.SVar transformeeId)
     let sName = X.structName @pt
 
-    -- HARDCODED TYPE (double). Introduce types to the AST to fix (TODO).
-    newGlobalVar "double" transformeeId
-
-    Name resVar <- freshId
+    -- Create the code for instantiating the struct.
     insts <- mapM instField (X.toFields @pt struct)
-    let argName = "arg"
+
+    Name retVar <- freshId
     let def = concat
-                -- TODO: again, hardcoded type
-            [ sName, "* ", funName, "(double arg) {\n"
+            [ sName, "* ", funName, "(", transformeeType, " arg) {\n"
             , "    ", transformeeId, " = arg;\n"
             -- TODO: SET UP free() SOMEHOW SO WE DON'T GET MEMORY LEAKS HERE
-            , "    ", sName, "* ", resVar, " = malloc(sizeof(", sName, "));\n"
-            , concatMap (\ xs -> "    " ++ resVar ++ xs ++ ";\n") insts
-            , "    return ", resVar, ";\n"
+            , "    ", sName, "* ", retVar, " = malloc(sizeof(", sName, "));\n"
+            , concatMap (\ xs -> "    " ++ retVar ++ xs ++ ";\n") insts
+            , "    return ", retVar, ";\n"
             , "}\n"
             ]
     Lens.Mtl.modifying cmDefs (def :)
