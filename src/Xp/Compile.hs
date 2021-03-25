@@ -160,7 +160,9 @@ cXp = \case
         condStr <- cXp cond
         pure $ concat [unName funName, "(", condStr, ")"]
 
-    (X.Case (X.Scrut scrutName (scrut :: Xp scrutType)) matches :: Xp retType) -> do
+    (X.Case (X.Scrut scrutName (scrut :: Xp scrutType)) matches :: Xp retType)
+        -> do
+
         funName <- freshId
 
         newCaseFun @retType @scrutType funName (Name scrutName, matches)

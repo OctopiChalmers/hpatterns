@@ -184,7 +184,7 @@ instance (CType a, Fractional a) => Fractional (Xp a) where
     (/) = Div
 
 --
--- * Struct type representation
+-- * Struct type representation and pattern matching
 --
 
 {- | Instances of @ToStruct a pt@ define translations from type @a@ to struct
@@ -356,5 +356,5 @@ xval = Val
 ifte :: CType a => Xp Bool -> Xp a -> Xp a -> Xp a
 ifte = IfThenElse
 
-cast :: CType b => Show a => TRep b -> Xp a -> Xp b
+cast :: (CType a, CType b, Show a) => TRep b -> Xp a -> Xp b
 cast = Cast

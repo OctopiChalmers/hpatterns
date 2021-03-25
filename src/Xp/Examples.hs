@@ -5,11 +5,6 @@ Print the C output of a program @(p :: Hiska (Xp a))@ with
 > printProg p
 -}
 
-{- Caused by having to define Partition data types elsewhere, due to
-limitations of TH.
--}
-{-# OPTIONS_GHC -Wno-orphans #-}
-
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE LambdaCase            #-}
@@ -20,11 +15,8 @@ limitations of TH.
 
 module Xp.Examples where
 
-import Data.Bifunctor
-
 import Xp.Core
 import Xp.Compile (compile)
-import Xp.ExamplesTypes
 import Xp.TH
 
 
@@ -248,10 +240,13 @@ instance Struct SplitFrac where
         [ Field TInt "sfInt" int
         , Field TDouble "sfDouble" frac
         ]
-    fromFields [Field TInt "sfInt" int, Field TDouble "sfDouble" frac]
+    fromFields
+        [ Field TInt "sfInt" int
+        , Field TDouble "sfDouble" frac
+        ]
         = SplitFrac int frac
 
-    dummy = SplitFrac undefined undefined
+    dummy = SplitFrac (error "dummy") (error "dummy")
 
 instance ToStruct Double SplitFrac where
     -- | Split a double into its integer and fractional part
