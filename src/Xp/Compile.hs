@@ -70,11 +70,13 @@ freshId = do
 {- | Main entry point for compilation. Compile an 'Xp.Xp' program (expression)
 into its C representation.
 -}
-compile :: Show a => Xp a -> String
+compile :: forall a . (X.CType a, Show a)
+    => Xp a
+    -> String
 compile program =
     let (code, st) :: (String, Cm) =
             St.runState (R.runReaderT (cXp program) initName) initCm
-        main = mainWrap code
+        main = mainWrap @a code
     in mconcat
         [ "\n// Code generated from Xp program \n\n"
 
@@ -110,14 +112,26 @@ compile program =
     includeWrap :: String -> String
     includeWrap s = "#include <" ++ s ++ ">"
 
-    mainWrap :: String -> String
+    mainWrap :: forall retType . (X.CType retType)
+        => String -> String
     mainWrap body = mconcat
         [ "int main() {\n"
-        , "    int output = ", body, ";\n"
-        , "    printf(\"Program output is: %d\\n\", output);\n"
+        , "    ", X.cType @retType, " output = ", body, ";\n"
+        , "    printf(\"Program output is: %",
+                formatting (X.cType @retType) : "\\n\", output);\n"
         , "    return 0;\n"
         , "}\n"
         ]
+      where
+        -- Quickfix thing, this should probably be determined by type
+        -- and not like this
+        formatting :: String -> Char
+        formatting = \case
+            "double" -> 'f'
+            "int" -> 'd'
+            "bool" -> 'd'
+            s -> error $ mconcat
+                ["formatting: cannot format for C type `", s, "`"]
 
 {- | Compile an expression into its C representation. Needed function
 definitions are generated as needed and added to the compilation state.

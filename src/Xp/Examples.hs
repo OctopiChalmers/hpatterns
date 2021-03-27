@@ -20,10 +20,15 @@ import Xp.Compile (compile)
 import Xp.TH
 
 
-writeProg :: Show a => FilePath -> Hiska (Xp a) -> IO ()
+writeProg :: (CType a, Show a)
+    => FilePath
+    -> Hiska (Xp a)
+    -> IO ()
 writeProg fp = writeFile fp . compile . runHiska
 
-printProg :: Show a => Hiska (Xp a) -> IO ()
+printProg :: (CType a, Show a)
+    => Hiska (Xp a)
+    -> IO ()
 printProg = putStrLn . compile . runHiska
 
 --
@@ -261,6 +266,9 @@ instance ToStruct Double SplitFrac where
 {- | Return true if the fractional part of the input would round upwards
 to the nearest whole number.
 -}
-ex4 :: Xp Double -> Hiska (Xp Bool)
-ex4 input = case2 input $ \case
-    SplitFrac int frac -> frac >. 0.5
+ex4 :: Xp Double -> Hiska (Xp Double)
+ex4 input = case' input $ \case
+    Pos n -> case2 n $ \case
+        SplitFrac int frac -> frac
+    Neg n -> pure n
+    Zero -> pure $ 0

@@ -54,6 +54,7 @@ freshId = do
 -- * Main data type
 --
 
+
 data Xp a where
     Val :: (CType a) => a -> Xp a
     Var :: (CType a) => String -> Xp a
