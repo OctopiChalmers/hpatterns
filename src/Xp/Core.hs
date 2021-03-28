@@ -112,9 +112,12 @@ data Xp a where
 
     CaseOf ::
         ( Show a
+        , Struct struct
         )
         => Scrut a
-        -> [(Xp b, Xp Bool)]
+        -> [(Xp Bool, Xp b, Maybe (Proxy struct))]
+        -- ^ Branches. If the branch deconstructs a struct, then we need to
+        -- know its type, hence the proxy.
         -> Xp b
 
     IfThenElse ::
@@ -265,7 +268,7 @@ case2 scrut f = do
     symStruct scrutName =
         fromFields
         $ zipWith mkSymField [0 ..]
-        $ toFields (dummy @pt)
+        $ toFields (toStruct @a @pt (SVar scrutName))
       where
         mkSymField :: Int -> Field -> Field
         mkSymField idx (Field t s _) =

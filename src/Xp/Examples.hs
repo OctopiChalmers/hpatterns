@@ -12,11 +12,13 @@ Print the C output of a program @(p :: Hiska (Xp a))@ with
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TemplateHaskell       #-}
+{-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE TypeApplications      #-}
 
 module Xp.Examples where
 
 import Data.Bifunctor (first)
+import Data.Proxy
 
 import Xp.Core
 import Xp.Compile (compile)
@@ -306,45 +308,53 @@ caseof :: forall a part struct b .
     , Show a
     )
     => Xp a
-    -> (part -> Maybe (Xp b))
+        -- ^ Scrutinee.
+    -> (part -> Bool)
+        -- ^ Is the resulting partition (after calling 'part') a struct type?
+    -> (Xp a -> Xp b)
+        -- ^ Function to apply if it was not a struct type.
     -> (struct -> Xp b)
+        -- ^ Function to apply if it was a struct type.
     -> Hiska (Xp b)
-caseof scrut fromPart fromStruct = do
+caseof scrut isProd onPart onStruct = do
     scrutId <- freshId
 
-    let xs = branch @part @a (SVar scrutId)
-        xs :: [(part, Xp Bool)]
+    let branches = branch @part @a (SVar scrutId)
+        branches :: [(part, Xp Bool)]
 
-    let result = map (first (f scrutId)) xs
-        result :: [(Xp b, Xp Bool)]
+    let bodies = map (apply scrutId) branches
 
-    pure $ CaseOf (Scrut scrutId scrut) result
+    pure $ CaseOf (Scrut scrutId scrut) bodies
   where
-    f :: String -> part -> Xp b
-    f varName constr = case fromPart constr of
-        Just res -> res
-        Nothing  -> fromStruct (toStruct @a $ SVar varName)
+    apply :: String -> (part, Xp Bool) -> (Xp Bool, Xp b, Maybe (Proxy struct))
+    apply scrutId (p, cond) = (cond, body, mbProxy)
+      where
+        (body, mbProxy) :: (Xp b, Maybe (Proxy struct)) = case isProd p of
+            False -> (onPart (SVar scrutId), Nothing)
+            True  -> (onStruct $ symStruct @a @struct scrutId, Just Proxy)
 
-symStruct :: forall struct .
+symStruct :: forall a struct .
     ( Struct struct
+    , ToStruct a struct
     )
     => String
     -> struct
-symStruct scrutName =
+symStruct scrutId =
     fromFields
     $ zipWith mkSymField [0 ..]
-    $ toFields (dummy @struct)
+    $ toFields (toStruct @a @struct (SVar scrutId))
   where
     mkSymField :: Int -> Field -> Field
     mkSymField idx (Field t s _) =
-        Field t s $ SFieldRef @struct $ FieldRef scrutName idx
+        Field t s $ SFieldRef @struct $ FieldRef scrutId idx
 
 ex5 :: Xp Int -> Hiska (Xp Int)
-ex5 var = caseof var f1 f2
+ex5 var = caseof var isProd onPart onStruct
   where
-    f1 = \case
-        Large -> Nothing
-        Small -> Just var
+    isProd = \case
+        Large -> True
+        Small -> False
+    onPart = (+ 1)
+    onStruct (Clone x y) = x + y
 
-    f2 = \case
-        Clone x y -> x + y
+
