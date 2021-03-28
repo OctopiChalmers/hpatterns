@@ -110,6 +110,13 @@ data Xp a where
         -> Xp b
         -> Xp b
 
+    CaseOf ::
+        ( Show a
+        )
+        => Scrut a
+        -> [(Xp b, Xp Bool)]
+        -> Xp b
+
     IfThenElse ::
         ( CType a
         )
@@ -316,6 +323,16 @@ case' scrut f = do
     bodies <- mapM f constructors
 
     pure $ Case (Scrut scrutName scrut) (zip preds bodies)
+
+--
+-- * Combined pattern matching
+--
+
+-- caseof :: forall p a b .
+--     (
+--     )
+--     => Xp a
+--     -> ()
 
 --
 -- * Other combinators

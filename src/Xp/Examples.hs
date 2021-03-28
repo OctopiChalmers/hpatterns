@@ -5,6 +5,7 @@ Print the C output of a program @(p :: Hiska (Xp a))@ with
 > printProg p
 -}
 
+{-# LANGUAGE AllowAmbiguousTypes   #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE LambdaCase            #-}
@@ -14,6 +15,8 @@ Print the C output of a program @(p :: Hiska (Xp a))@ with
 {-# LANGUAGE TypeApplications      #-}
 
 module Xp.Examples where
+
+import Data.Bifunctor (first)
 
 import Xp.Core
 import Xp.Compile (compile)
@@ -267,8 +270,81 @@ instance ToStruct Double SplitFrac where
 to the nearest whole number.
 -}
 ex4 :: Xp Double -> Hiska (Xp Double)
-ex4 input = case' input $ \case
-    Pos n -> case2 n $ \case
-        SplitFrac int frac -> frac
-    Neg n -> pure n
-    Zero -> pure $ 0
+ex4 input = case2 input $ \case
+    SplitFrac int frac -> frac
+
+--
+-- * Example 5
+--
+
+data Size
+    = Large
+    | Small
+    deriving Show
+
+class Part p a where
+    branch :: Xp a -> [(p, Xp Bool)]
+
+instance Part Size Int where
+    branch var = [(Large, var >. 10), (Small, var <. 10)]
+
+data Clone = Clone (Xp Int) (Xp Int)
+
+instance Struct Clone where
+    structName = "Clone"
+    toFields (Clone x y) = [Field TInt "x" x, Field TInt "y" y]
+    fromFields [Field TInt "x" x, Field TInt "y" y] = (Clone x y)
+    dummy = Clone (error "dummy") (error "dummy")
+
+instance ToStruct Int Clone where
+    toStruct var = Clone var var
+
+caseof :: forall a part struct b .
+    ( ToStruct a struct
+    , Part part a
+    , Struct struct
+    , Show a
+    )
+    => Xp a
+    -> (part -> Maybe (Xp b))
+    -> (struct -> Xp b)
+    -> Hiska (Xp b)
+caseof scrut fromPart fromStruct = do
+    scrutId <- freshId
+
+    let xs = branch @part @a (SVar scrutId)
+        xs :: [(part, Xp Bool)]
+
+    let result = map (first (f scrutId)) xs
+        result :: [(Xp b, Xp Bool)]
+
+    pure $ CaseOf (Scrut scrutId scrut) result
+  where
+    f :: String -> part -> Xp b
+    f varName constr = case fromPart constr of
+        Just res -> res
+        Nothing  -> fromStruct (toStruct @a $ SVar varName)
+
+symStruct :: forall struct .
+    ( Struct struct
+    )
+    => String
+    -> struct
+symStruct scrutName =
+    fromFields
+    $ zipWith mkSymField [0 ..]
+    $ toFields (dummy @struct)
+  where
+    mkSymField :: Int -> Field -> Field
+    mkSymField idx (Field t s _) =
+        Field t s $ SFieldRef @struct $ FieldRef scrutName idx
+
+ex5 :: Xp Int -> Hiska (Xp Int)
+ex5 var = caseof var f1 f2
+  where
+    f1 = \case
+        Large -> Nothing
+        Small -> Just var
+
+    f2 = \case
+        Clone x y -> x + y
