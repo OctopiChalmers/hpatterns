@@ -6,11 +6,16 @@ Print the C output of a program @(p :: Hiska (Xp a))@ with
 -}
 
 {-# LANGUAGE AllowAmbiguousTypes   #-}
+{-# LANGUAGE DeriveLift            #-}
+{-# LANGUAGE DerivingStrategies    #-}
+{-# LANGUAGE DeriveGeneric    #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
+{-# LANGUAGE KindSignatures        #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE StandaloneDeriving    #-}
 {-# LANGUAGE TemplateHaskell       #-}
 {-# LANGUAGE TupleSections         #-}
 {-# LANGUAGE TypeApplications      #-}
@@ -19,6 +24,8 @@ module Xp.Examples where
 
 import Data.Bifunctor (first)
 import Data.Proxy
+import Data.Tuple
+import Control.Monad
 
 import Xp.Core
 import Xp.Compile (compile)
@@ -68,7 +75,7 @@ int main() {
 -}
 ex1 :: Xp Int -> Hiska (Xp Int)
 ex1 var = case' var $ \case
-    Pos e -> pure (e + 1)
+    Pos e -> pure (var + 1)
     Neg e -> pure e
     Zero  -> pure 0
 
@@ -284,62 +291,54 @@ data Size
     | Small
     deriving Show
 
-class Part p a where
-    branch :: Xp a -> [(p, Xp Bool)]
+class Part a p where
+    conditions :: Xp a -> [(p, Xp Bool)]
 
-instance Part Size Int where
-    branch var = [(Large, var >. 10), (Small, var <. 10)]
+instance Part Int Size where
+    conditions var = [(Large, var >. 10), (Small, var <. 10)]
 
 data Clone = Clone (Xp Int) (Xp Int)
+    deriving Show
 
 instance Struct Clone where
     structName = "Clone"
     toFields (Clone x y) = [Field TInt "x" x, Field TInt "y" y]
     fromFields [Field TInt "x" x, Field TInt "y" y] = (Clone x y)
-    dummy = Clone (error "dummy") (error "dummy")
+
+    dummy = Clone TBD TBD
 
 instance ToStruct Int Clone where
     toStruct var = Clone var var
 
 caseof :: forall a part struct b .
-    ( ToStruct a struct
-    , Part part a
-    , Struct struct
+    ( Part a part
+    , ToStruct a struct
     , Show a
+    , Show struct
     )
     => Xp a
-        -- ^ Scrutinee.
-    -> (part -> Bool)
-        -- ^ Is the resulting partition (after calling 'part') a struct type?
-    -> (Xp a -> Xp b)
-        -- ^ Function to apply if it was not a struct type.
-    -> (struct -> Xp b)
-        -- ^ Function to apply if it was a struct type.
+    -> (part -> struct -> Xp b)
     -> Hiska (Xp b)
-caseof scrut isProd onPart onStruct = do
+caseof scrut f = do
     scrutId <- freshId
 
-    let branches = branch @part @a (SVar scrutId)
-        branches :: [(part, Xp Bool)]
+    let symStruct = mkSymStruct @a @struct scrutId
+        symStruct :: struct
 
-    let bodies = map (apply scrutId) branches
+    let conds = conditions @a @part scrut
+        conds :: [(part, Xp Bool)]
 
-    pure $ CaseOf (Scrut scrutId scrut) bodies
-  where
-    apply :: String -> (part, Xp Bool) -> (Xp Bool, Xp b, Maybe (Proxy struct))
-    apply scrutId (p, cond) = (cond, body, mbProxy)
-      where
-        (body, mbProxy) :: (Xp b, Maybe (Proxy struct)) = case isProd p of
-            False -> (onPart (SVar scrutId), Nothing)
-            True  -> (onStruct $ symStruct @a @struct scrutId, Just Proxy)
+    let bodies = map (swap . first (`f` symStruct)) conds
+        bodies :: [(Xp Bool, Xp b)]
 
-symStruct :: forall a struct .
-    ( Struct struct
-    , ToStruct a struct
+    pure $ CaseOf (Scrut scrutId scrut) symStruct bodies
+
+mkSymStruct :: forall a struct .
+    ( ToStruct a struct
     )
     => String
     -> struct
-symStruct scrutId =
+mkSymStruct scrutId =
     fromFields
     $ zipWith mkSymField [0 ..]
     $ toFields (toStruct @a @struct (SVar scrutId))
@@ -349,12 +348,7 @@ symStruct scrutId =
         Field t s $ SFieldRef @struct $ FieldRef scrutId idx
 
 ex5 :: Xp Int -> Hiska (Xp Int)
-ex5 var = caseof var isProd onPart onStruct
-  where
-    isProd = \case
-        Large -> True
-        Small -> False
-    onPart = (+ 1)
-    onStruct (Clone x y) = x + y
-
+ex5 var = caseof var $ \case
+    Large -> \ (Clone x y) -> x + y
+    Small -> \ _           -> var + 1
 

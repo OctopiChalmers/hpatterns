@@ -56,6 +56,8 @@ freshId = do
 
 
 data Xp a where
+    TBD :: Xp a
+
     Val :: (CType a) => a -> Xp a
     Var :: (CType a) => String -> Xp a
 
@@ -112,12 +114,17 @@ data Xp a where
 
     CaseOf ::
         ( Show a
-        , Struct struct
+        , Show struct
+        , ToStruct a struct
         )
         => Scrut a
-        -> [(Xp Bool, Xp b, Maybe (Proxy struct))]
-        -- ^ Branches. If the branch deconstructs a struct, then we need to
-        -- know its type, hence the proxy.
+        -- ^ Scrutinee.
+        -> struct
+        -- ^ Struct conversion of scrutinee.
+        -> [(Xp Bool, Xp b)]
+        -- ^ Branches:
+        -- Condition -
+        -- Body      -
         -> Xp b
 
     IfThenElse ::
