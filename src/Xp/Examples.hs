@@ -5,22 +5,16 @@ Print the C output of a program @(p :: Hiska (Xp a))@ with
 > printProg p
 -}
 
-{-# LANGUAGE AllowAmbiguousTypes     #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
-{-# LANGUAGE TemplateHaskell       #-}
-{-# LANGUAGE TypeApplications      #-}
 
 module Xp.Examples where
 
-import Data.Bifunctor
-
 import Xp.Core
 import Xp.Compile (compile)
-import Xp.TH
 
 
 writeProg :: (CType a, Show a)
@@ -39,30 +33,6 @@ printProg = putStrLn . compile . runHiska
 --
 
 {- | Increment input by 1 if positive, otherwise return the input unchanged.
-
-C output:
-
-@
-GHCi> printProg $ ex1 4
-
-int coreId0;
-
-int v0(int v2) {
-    coreId0 = v2;
-    int v1;
-    if ((coreId0 > 0)) { v1 = (coreId0 + 1); } else
-    if ((coreId0 < 0)) { v1 = coreId0; } else
-    if ((coreId0 == 0)) { v1 = 0; } else
-    { printf("Non-exhaustive conditions in function `v0`\n"); }
-    return v1;
-}
-
-int main() {
-    int output = v0(4);
-    printf("Program output is: %d\n", output);
-    return 0;
-}
-@
 -}
 ex1 :: Xp Int -> Hiska (Xp Int)
 ex1 var = branch var $ \case
@@ -70,62 +40,35 @@ ex1 var = branch var $ \case
     Neg  -> pure
     Zero -> pure
 
-data Sig
-    = Pos
-    | Neg
-    | Zero
+data Sig = Pos | Neg | Zero
     deriving (Show)
 
 instance (CType a, Eq a, Num a, Show a) => Partition a Sig where
-    partition var = zip constructors preds
-      where
-        preds = [var >. 0, var <. 0, var ==. 0]
-        constructors = [Pos, Neg, Zero]
+    partition var =
+        [ (Pos, var >. 0)
+        , (Neg, var <. 0)
+        , (Zero, var ==. 0)
+        ]
 
 --
 -- * Example 2
 --
 
 {- | Return True if the input char is exactly 'A', False otherwise.
-
-C output (doesn't actually run due to improper string representation in C):
-
-@
-GHCi> printProg $ ex2 (xval 'A')
-
-int coreId0;
-
-int v0(int v2) {
-    coreId0 = v2;
-    int v1;
-    if ((coreId0 == 'A')) { v1 = True; } else
-    if ((!(coreId0 == 'A'))) { v1 = False; } else
-    { printf("Non-exhaustive conditions in function `v0`\n"); }
-    return v1;
-}
-
-int main() {
-    int output = v0('A');
-    printf("Program output is: %d\n", output);
-    return 0;
-}
-@
 -}
+
 ex2 :: Xp Char -> Hiska (Xp Bool)
 ex2 var = branch var $ \case
-    CharA _    -> const $ pure $ xval True
-    CharNotA _ -> const $ pure $ xval False
+    CharA    -> const $ pure $ xval True
+    CharNotA -> const $ pure $ xval False
 
 data PartChar
-    = CharA (Xp Char)
-    | CharNotA (Xp Char)
+    = CharA
+    | CharNotA
     deriving (Show)
 
 instance Partition Char PartChar where
-    partition var = zip constructors preds
-      where
-        preds = [var ==. xval 'A', var /=. xval 'A']
-        constructors = [CharA var, CharNotA var]
+    partition var = [(CharA, var ==. xval 'A'), (CharNotA, var /=. xval 'A')]
 
 --
 -- * Example 3
@@ -139,40 +82,6 @@ conditions apply:
 1) The soil is sufficiently dry (< 20 %)
 2) The soil is only halfway moist (< 50 %) AND the temperature is
     very high (> 35 degrees).
-
-C Output:
-
-@
-GHCi> printProg $ needsWatering 25 0.3
-
-int coreId0;
-int coreId1;
-
-int v2(int v4) {
-    coreId1 = v4;
-    int v3;
-    if ((coreId1 < 18)) { v3 = False; } else
-    if (((18 < coreId1) && (coreId1 < 30))) { v3 = False; } else
-    if ((30 < coreId1)) { v3 = ((coreId1 > 35) && (coreId0 < 0.5)); } else
-    { printf("Non-exhaustive conditions in function `v2`\n"); }
-    return v3;
-}
-
-int v0(int v5) {
-    coreId0 = v5;
-    int v1;
-    if ((coreId0 < 0.2)) { v1 = True; } else
-    if ((0.2 < coreId0)) { v1 = v2(25); } else
-    { printf("Non-exhaustive conditions in function `v0`\n"); }
-    return v1;
-}
-
-int main() {
-    int output = v0(0.3);
-    printf("Program output is: %d\n", output);
-    return 0;
-}
-@
 -}
 needsWatering :: Xp Temp -> Xp Moisture -> Hiska (Xp Bool)
 needsWatering temp moistLvl = branch moistLvl $ \case
@@ -196,42 +105,17 @@ data PartTemp
     deriving (Show)
 
 instance Partition Double PartMoisture where
-    partition var = zip constructors preds
-      where
-        preds =
-            [ var <. 0.2  -- Dry
-            , 0.2 <. var  -- OK
-            ]
-        constructors =
-            [ MoistureDry
-            , MoistureOk
-            ]
+    partition var =
+        [ (MoistureDry, var <. 0.2)
+        , (MoistureOk, var >. 0.2)
+        ]
 
 instance Partition Int PartTemp where
-    partition var = zip constructors preds
-      where
-        preds =
-            [ var <. 18                -- Cold
-            , 18 <. var &&. var <. 30  -- OK
-            , 30 <. var                -- Hot
-            ]
-        constructors =
-            [ TempCold
-            , TempOk
-            , TempHot
-            ]
-
--- | Re-implementation of watering example, but with if/then/else.
-water2 :: Xp Temp -> Xp Moisture -> Hiska (Xp Bool)
-water2 temp moistLvl = pure $
-    ifte moistureOk
-        (ifte tempHot
-            (temp >. 35 &&. moistLvl <. 0.5)
-            (xval False))
-        (xval True)
-  where
-    tempHot = temp >. 25
-    moistureOk = moistLvl <. 0.2
+    partition var =
+        [ (TempCold, var <. 18)
+        , (TempOk, var >. 18 &&. var <. 30)
+        , (TempHot, var >. 30)
+        ]
 
 --
 -- * Example 4
@@ -266,16 +150,15 @@ instance ToStruct Double SplitFrac where
         frac :: Xp Double
         frac = double - (cast TDouble int)
 
-{- | Return true if the fractional part of the input would round upwards
-to the nearest whole number.
--}
 ex4 :: Xp Double -> Hiska (Xp Double)
 ex4 input = branch input $ \case
-    Pos -> \ n -> case2 n $ \case SplitFrac int frac -> frac
+    Pos -> decon $ \ (SplitFrac int frac) -> frac
     Neg  -> pure
     Zero -> pure
 
--- * Ex 5
+--
+-- * Example 5
+--
 
 data Size = Large | Small
     deriving Show
