@@ -65,22 +65,22 @@ int main() {
 @
 -}
 ex1 :: Xp Int -> Hiska (Xp Int)
-ex1 var = case' var $ \case
-    Pos e -> pure (e + 1)
-    Neg e -> pure e
-    Zero  -> pure 0
+ex1 var = branch var $ \case
+    Pos  -> pure . (+ 1)
+    Neg  -> pure
+    Zero -> pure
 
-data Num a => Sig a
-    = Pos (Xp a)
-    | Neg (Xp a)
+data Sig
+    = Pos
+    | Neg
     | Zero
     deriving (Show)
 
-instance (CType a, Eq a, Num a, Show a) => Partition a (Sig a) where
+instance (CType a, Eq a, Num a, Show a) => Partition a Sig where
     partition var = zip constructors preds
       where
         preds = [var >. 0, var <. 0, var ==. 0]
-        constructors = [Pos var, Neg var, Zero]
+        constructors = [Pos, Neg, Zero]
 
 --
 -- * Example 2
@@ -112,9 +112,9 @@ int main() {
 @
 -}
 ex2 :: Xp Char -> Hiska (Xp Bool)
-ex2 var = case' var $ \case
-    CharA _    -> pure $ xval True
-    CharNotA _ -> pure $ xval False
+ex2 var = branch var $ \case
+    CharA _    -> const $ pure $ xval True
+    CharNotA _ -> const $ pure $ xval False
 
 data PartChar
     = CharA (Xp Char)
@@ -175,24 +175,24 @@ int main() {
 @
 -}
 needsWatering :: Xp Temp -> Xp Moisture -> Hiska (Xp Bool)
-needsWatering temp moistLvl = case' moistLvl $ \case
-    MoistureOk m -> case' temp $ \case
-        TempHot t -> pure $ t >. 35 &&. m <. 0.5
-        _         -> pure $ xval False
-    MoistureDry _ -> pure $ xval True
+needsWatering temp moistLvl = branch moistLvl $ \case
+    MoistureOk -> \ m -> branch temp $ \case
+        TempHot -> \ t -> pure $ t >. 35 &&. m <. 0.5
+        _       -> const $ pure $ xval False
+    MoistureDry -> const $ pure $ xval True
 
 type Moisture = Double
 type Temp     = Int
 
 data PartMoisture
-    = MoistureDry (Xp Double)
-    | MoistureOk  (Xp Double)
+    = MoistureDry
+    | MoistureOk
     deriving (Show)
 
 data PartTemp
-    = TempCold (Xp Int)
-    | TempOk (Xp Int)
-    | TempHot (Xp Int)
+    = TempCold
+    | TempOk
+    | TempHot
     deriving (Show)
 
 instance Partition Double PartMoisture where
@@ -203,8 +203,8 @@ instance Partition Double PartMoisture where
             , 0.2 <. var  -- OK
             ]
         constructors =
-            [ MoistureDry var
-            , MoistureOk  var
+            [ MoistureDry
+            , MoistureOk
             ]
 
 instance Partition Int PartTemp where
@@ -216,9 +216,9 @@ instance Partition Int PartTemp where
             , 30 <. var                -- Hot
             ]
         constructors =
-            [ TempCold var
-            , TempOk   var
-            , TempHot  var
+            [ TempCold
+            , TempOk
+            , TempHot
             ]
 
 -- | Re-implementation of watering example, but with if/then/else.
@@ -270,11 +270,10 @@ instance ToStruct Double SplitFrac where
 to the nearest whole number.
 -}
 ex4 :: Xp Double -> Hiska (Xp Double)
-ex4 input = case' input $ \case
-    Pos n -> case2 n $ \case
-        SplitFrac int frac -> frac
-    Neg n -> pure n
-    Zero -> pure $ 0
+ex4 input = branch input $ \case
+    Pos -> \ n -> case2 n $ \case SplitFrac int frac -> frac
+    Neg  -> pure
+    Zero -> pure
 
 -- * Ex 5
 
@@ -284,11 +283,8 @@ data Size = Large | Small
 data Clone = Clone (Xp Int) (Xp Int)
     deriving Show
 
-class Part a p where
-    part :: Xp a -> [(p, Xp Bool)]
-
-instance Part Int Size where
-    part var = [(Large, var >. 9), (Small, var <. 9)]
+instance Partition Int Size where
+    partition var = [(Large, var >. 9), (Small, var <. 9)]
 
 instance Struct Clone where
     structName = "Clone"
@@ -303,21 +299,3 @@ prog5 :: Xp Int -> Hiska (Xp Int)
 prog5 var = branch var $ \case
     Large -> decon $ \ (Clone x y) -> x + y
     Small -> pure . (+ 1)
-
-decon = flip case2
-
-branch :: forall a p s b .
-    ( Part a p
-    , Show a
-    )
-    => Xp a
-    -> (p -> Xp a -> Hiska (Xp b))
-    -> Hiska (Xp b)
-branch scrut f = do
-    scrutId <- freshId
-
-    let (parts, preds) = unzip $ part @a @p (SVar scrutId)
-
-    bodies <- mapM (\ p -> f p (SVar scrutId)) parts
-
-    pure $ CaseOf (Scrut scrutId scrut) (zip preds bodies)

@@ -273,6 +273,17 @@ case2 scrut f = do
         mkSymField idx (Field t s _) =
             Field t s $ SFieldRef @pt $ FieldRef scrutName idx
 
+decon :: forall a s b .
+    ( ToStruct a s
+    , Show a
+    , CType a
+    , CType b
+    )
+    => (s -> Xp b)
+    -> Xp a
+    -> Hiska (Xp b)
+decon = flip case2
+
 --
 -- * Partitioning
 --
@@ -280,30 +291,23 @@ case2 scrut f = do
 class Partition a p where
     partition :: Xp a -> [(p, Xp Bool)]
 
--- | Case analysis on a partition-able scrutinee.
-case' :: forall p a b .
+branch :: forall a p s b .
     ( Partition a p
+    , Show a
     , CType a
     , CType b
-    , Show a
     )
     => Xp a
-    -> (p -> Hiska (Xp b))
+    -> (p -> Xp a -> Hiska (Xp b))
     -> Hiska (Xp b)
-case' scrut f = do
-    -- Generate new tag to keep track of which scrutinee we refer to
-    -- in the body of a match.
-    scrutName <- freshId
+branch scrut f = do
+    scrutId <- freshId
 
-    -- Generate the predicates and applied constructors for the input parition
-    -- type.
-    let (constructors, preds) = unzip $ partition @a @p (SVar scrutName)
+    let (parts, preds) = unzip $ partition @a @p (SVar scrutId)
 
-    -- Generate the bodies of the matches by applying the input function
-    -- to every possible constructor; compare to The Trick.
-    bodies <- mapM f constructors
+    bodies <- mapM (\ p -> f p (SVar scrutId)) parts
 
-    pure $ Case (Scrut scrutName scrut) (zip preds bodies)
+    pure $ Case (Scrut scrutId scrut) (zip preds bodies)
 
 --
 -- * Other combinators
