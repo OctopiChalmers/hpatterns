@@ -165,26 +165,17 @@ ex4 input = branch input $ \case
 data Size = Large | Small
     deriving (Show, Enum)
 
-data Clone = Clone (Xp Int) (Xp Int)
+data Mirror = Mirror (Xp Float) (Xp Int)
     deriving Show
-
-data Clon = Clon (Xp Int) (Xp Int)
-    deriving Show
-$(deriveStruct ''Clon)
+$(deriveStruct ''Mirror)
 
 instance Partition Int Size where
     partition var = [(Large, var >. 9), (Small, var <. 9)]
 
-instance Struct Clone where
-    structName = "Clone"
-    toFields (Clone x y) = [Field TInt "x" x, Field TInt "y" y]
-    fromFields [Field TInt "x" x, Field TInt "y" y] = (Clone x y)
-    dummy = Clone (error "dummy") (error "dummy")
-
-instance ToStruct Int Clone where
-    toStruct n = Clone n n
+instance ToStruct Int Mirror where
+    toStruct n = Mirror n (-n)
 
 prog5 :: Xp Int -> Hiska (Xp Int)
 prog5 var = branch var $ \case
-    Large -> as $ \ (Clone x y) -> x + y
+    Large -> as $ \ (Mirror x y) -> x + y
     Small -> pure . (+ 1)

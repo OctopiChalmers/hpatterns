@@ -17,42 +17,6 @@ import qualified Data.List as List
 import qualified Xp.Core
 
 
-
-{- | Enumerate the constructors of some type, inserting 'SVar' wherever
-something of type (Xp a) is required.
-
-For example, given the following definition:
-
-> data Sig a = Pos (Xp a) | Neg (Xp a) | Zero
-
-@makeConstructors ''Sig@ will generate the following:
-
-> [Pos SVar, Neg SVar, Zero]
--}
-makeConstructors :: Name -> Q Exp
-makeConstructors pa = do
-    TyConI typeDec <- reify pa
-    let DataD _ _ _ _ ddCons _ = typeDec
-    ListE <$> createCons ddCons
-  where
-    createCons :: [Con] -> Q [Exp]
-    createCons cons = mapM con2exp cons
-
-    con2exp :: Con -> ExpQ
-    con2exp (NormalC name btys) = do
-        exps <- mapM bt2arg btys
-        return $ apply (ConE name) exps
-      where
-        apply :: Exp -> [Exp] -> Exp
-        apply e = List.foldl' AppE e
-
-    bt2arg :: BangType -> ExpQ
-    bt2arg (_bang, ty) =
-        case ty of
-            AppT (ConT name) _t2
-                | name == ''Xp.Core.Xp -> [e| (Xp.Core.SVar) |]
-            _ -> error $ "Non-Xp argument to data constructor: " <> show ty
-
 deriveStruct :: Name -> Q [Dec]
 deriveStruct victim = do
     TyConI d <- reify victim
@@ -94,6 +58,8 @@ deriveStruct victim = do
                 | xpTy == ''Xp.Core.Xp && innerTy == ''Int    -> [p| Xp.Core.TInt |]
                 | xpTy == ''Xp.Core.Xp && innerTy == ''Double -> [p| Xp.Core.TDouble |]
                 | xpTy == ''Xp.Core.Xp && innerTy == ''Bool   -> [p| Xp.Core.TBool |]
+            _ ->  error $ "deriveStruct: Invalid definition of type `"
+                <> show victim <> "`"
 
     getToFields :: Dec -> Q (Pat, Exp)
     getToFields (DataD _ _ _ _ [NormalC cName bTypes] _) = do
@@ -116,6 +82,8 @@ deriveStruct victim = do
                 | xpTy == ''Xp.Core.Xp && innerTy == ''Int    -> [| Xp.Core.TInt |]
                 | xpTy == ''Xp.Core.Xp && innerTy == ''Double -> [| Xp.Core.TDouble |]
                 | xpTy == ''Xp.Core.Xp && innerTy == ''Bool   -> [| Xp.Core.TBool |]
+            _ ->  error $ "deriveStruct: Invalid definition of type `"
+                <> show victim <> "`"
 
     getStructName :: Dec -> String
     getStructName (DataD _ (Name (OccName s) _) _ _ _ _) = s

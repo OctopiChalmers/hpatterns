@@ -231,14 +231,14 @@ data FieldRef a = FieldRef
 -- ** Combinators
 
 -- | Deconstruction on a scrutinee that can be translated to a struct type.
-deconstruct :: forall a p b .
-    ( ToStruct a p
+deconstruct :: forall a s b .
+    ( ToStruct a s
     , Show a
     , CType a
     , CType b
     )
     => Xp a
-    -> (p -> Xp b)
+    -> (s -> Xp b)
     -> Hiska (Xp b)
 deconstruct scrut f = do
     -- Generate an internal name for the scrutinee (see why below).
@@ -248,7 +248,7 @@ deconstruct scrut f = do
 
     -- The reason for using Proxy is to give the compiler information about
     -- the struct type, so that it can generate the proper names and types.
-    pure $ ProdMatch (Proxy @p) (Scrut scrutId scrut) body
+    pure $ ProdMatch (Proxy @s) (Scrut scrutId scrut) body
   where
     -- Create an instance of the struct type with all fields as symbolic
     -- references (SFieldRef) pointing to the scrutinee. We need to do this
@@ -258,15 +258,15 @@ deconstruct scrut f = do
     -- be using variables from this generated struct and not the actual
     -- scrutinee, we need to manually maintain the relationship between the
     -- generated struct and the scrutinee.
-    symStruct :: String -> p
+    symStruct :: String -> s
     symStruct scrutId =
         fromFields
         $ zipWith mkSymField [0 ..]
-        $ toFields (dummy @p)
+        $ toFields (dummy @s)
       where
         mkSymField :: Int -> Field -> Field
         mkSymField idx (Field t s _) =
-            Field t s $ SFieldRef @p $ FieldRef scrutId idx
+            Field t s $ SFieldRef @s $ FieldRef scrutId idx
 
 -- | 'deconstruct' with arguments flipped.
 as :: forall a s b .
