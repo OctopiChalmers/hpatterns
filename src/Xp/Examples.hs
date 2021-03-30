@@ -10,11 +10,13 @@ Print the C output of a program @(p :: Hiska (Xp a))@ with
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE ScopedTypeVariables   #-}
+{-# LANGUAGE TemplateHaskell       #-}
 
 module Xp.Examples where
 
 import Xp.Core
 import Xp.Compile (compile)
+import Xp.TH
 
 
 writeProg :: (CType a, Show a)
@@ -165,6 +167,10 @@ data Size = Large | Small
 
 data Clone = Clone (Xp Int) (Xp Int)
     deriving Show
+
+data Clon = Clon (Xp Int) (Xp Int)
+    deriving Show
+$(deriveStruct ''Clon)
 
 instance Partition Int Size where
     partition var = [(Large, var >. 9), (Small, var <. 9)]
