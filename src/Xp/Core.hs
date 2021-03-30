@@ -50,10 +50,11 @@ freshId = do
     Lens.modifying hstCounter (+ 1)
     pure newId
 
+data Prog a = forall x . (CType x, Show a) => Prog (Xp x -> Hiska (Xp a))
+
 --
 -- * Main data type
 --
-
 
 data Xp a where
     TBD :: Xp a

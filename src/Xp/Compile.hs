@@ -34,7 +34,18 @@ import Xp.Core (Xp)
 -- * Compilation utils
 --
 
-type Compile = R.ReaderT Name (St.State Cm)
+type Compile = St.State Cm
+
+runCompile :: Compile a -> (a, Cm)
+runCompile x = St.runState x initCm
+  where
+    initCm :: Cm
+    initCm = Cm
+        { _cmCounter = 0
+        , _cmDefs    = []
+        , _cmGlobals = []
+        , _cmStructs = M.empty
+        }
 
 newtype Name = Name
     { unName :: String
@@ -71,12 +82,13 @@ freshId = do
 into its C representation.
 -}
 compile :: forall a . (X.CType a, Show a)
-    => Xp a
+    => X.Prog a
     -> String
-compile program =
-    let (code, st) :: (String, Cm) =
-            St.runState (R.runReaderT (cXp program) initName) initCm
-        main = mainWrap @a code
+compile (X.Prog (program :: X.Xp argType -> X.Hiska (Xp a))) =
+    let
+        exp = X.runHiska (program $ X.xvar inputName)
+        (expStr, st) :: (String, Cm) = runCompile (cXp exp)
+        main = mainWrap @a expStr
     in mconcat
         [ "\n// Code generated from Xp program \n\n"
 
@@ -98,40 +110,41 @@ compile program =
         , main
         ]
   where
-    initName :: Name
-    initName = Name "scrut"
-
-    initCm :: Cm
-    initCm = Cm
-        { _cmCounter = 0
-        , _cmDefs    = []
-        , _cmGlobals = []
-        , _cmStructs = M.empty
-        }
-
     includeWrap :: String -> String
     includeWrap s = "#include <" ++ s ++ ">"
 
+    inputName :: String
+    inputName = "input"
+
     mainWrap :: forall retType . (X.CType retType)
-        => String -> String
+        => String
+        -> String
     mainWrap body = mconcat
-        [ "int main() {\n"
+        [ "int main(int argc, char* argv[]) {\n"
+        , "    if (argc <= 1) { exit(1); }  // No input\n"
+        , "    ", inputConversion
         , "    ", X.cType @retType, " output = ", body, ";\n"
         , "    printf(\"Program output is: %",
-                formatting (X.cType @retType) : "\\n\", output);\n"
+                outputFormatting : "\\n\", output);\n"
         , "    return 0;\n"
         , "}\n"
         ]
       where
-        -- Quickfix thing, this should probably be determined by type
-        -- and not like this
-        formatting :: String -> Char
-        formatting = \case
+        -- These are dirty
+        inputConversion :: String
+        inputConversion = case X.cType @argType of
+            "double" -> "double " ++ inputName ++ " = atof(argv[1]);\n"
+            "int"    -> "int " ++ inputName ++ " = atoi(argv[1]);\n"
+            s -> error $ mconcat
+                ["inputConversion: cannot understand handle for C type: ", s]
+
+        outputFormatting :: Char
+        outputFormatting = case X.cType @retType of
             "double" -> 'f'
             "int" -> 'd'
             "bool" -> 'd'
             s -> error $ mconcat
-                ["formatting: cannot format for C type `", s, "`"]
+                ["outputFormatting: cannot format for C type: ", s]
 
 {- | Compile an expression into its C representation. Needed function
 definitions are generated as needed and added to the compilation state.

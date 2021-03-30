@@ -34,14 +34,14 @@ import Xp.TH
 
 writeProg :: (CType a, Show a)
     => FilePath
-    -> Hiska (Xp a)
+    -> Prog a
     -> IO ()
-writeProg fp = writeFile fp . compile . runHiska
+writeProg fp = writeFile fp . compile
 
 printProg :: (CType a, Show a)
-    => Hiska (Xp a)
+    => Prog a
     -> IO ()
-printProg = putStrLn . compile . runHiska
+printProg = putStrLn . compile
 
 --
 -- * Example 1
@@ -78,6 +78,9 @@ ex1 var = case' var $ \case
     Pos e -> pure (var + 1)
     Neg e -> pure e
     Zero  -> pure 0
+
+prog1 :: Xp Int -> Hiska (Xp Int)
+prog1 var = pure $ ifte (var >. 0) (var + 1) (var)
 
 data Num a => Sig a
     = Pos (Xp a)
@@ -347,8 +350,10 @@ mkSymStruct scrutId =
     mkSymField idx (Field t s _) =
         Field t s $ SFieldRef @struct $ FieldRef scrutId idx
 
-ex5 :: Xp Int -> Hiska (Xp Int)
-ex5 var = caseof var $ \case
+prog5 :: Xp Int -> Hiska (Xp Int)
+prog5 var = caseof var $ \case
     Large -> \ (Clone x y) -> x + y
     Small -> \ _           -> var + 1
 
+mkProg :: (CType a, Show b) => (Xp a -> Hiska (Xp b)) -> Prog b
+mkProg = Prog
