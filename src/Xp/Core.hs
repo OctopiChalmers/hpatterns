@@ -56,6 +56,8 @@ freshId = do
 
 
 data Xp a where
+    X :: Xp a
+
     Val :: (CType a) => a -> Xp a
     Var :: (CType a) => String -> Xp a
 
@@ -268,39 +270,18 @@ case2 scrut f = do
 -- * Partitioning
 --
 
-class Partition (p :: * -> *) a where
-    {- | All partition types must define how to generate the its
-    'PartitionData', given a symbolic variable.
-    -}
-    partition :: Xp a -> PartitionData p a
-
-{- | Data type containing necessary stuff to build case constructions.
-
-The lists need be of equal length, or behavior is undefined. I.e. for any
-
-> PartitionData xs ys
-
-The following must hold:
-
-> length xs == ys length
--}
-data PartitionData p a = PartitionData
-    [Xp Bool]
-    -- ^ Predicates for seclecting a branch. These should be 'Xp' values,
-    -- using 'SVar's to refer to the scrutinee of a case-expression.
-    [p a]
-    -- ^ All constructors of type (p a), fully applied on 'SVar's where
-    -- applicable.
+class Partition a p where
+    partition :: Xp a -> [(p, Xp Bool)]
 
 -- | Case analysis on a partition-able scrutinee.
 case' :: forall p a b .
-    ( Partition p a
+    ( Partition a p
     , CType a
     , CType b
     , Show a
     )
     => Xp a
-    -> (p a -> Hiska (Xp b))
+    -> (p -> Hiska (Xp b))
     -> Hiska (Xp b)
 case' scrut f = do
     -- Generate new tag to keep track of which scrutinee we refer to
@@ -309,7 +290,7 @@ case' scrut f = do
 
     -- Generate the predicates and applied constructors for the input parition
     -- type.
-    let PartitionData preds constructors = partition @p @a (SVar scrutName)
+    let (constructors, preds) = unzip $ partition @a @p (SVar scrutName)
 
     -- Generate the bodies of the matches by applying the input function
     -- to every possible constructor; compare to The Trick.

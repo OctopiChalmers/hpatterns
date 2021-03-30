@@ -5,6 +5,7 @@ Print the C output of a program @(p :: Hiska (Xp a))@ with
 > printProg p
 -}
 
+{-# LANGUAGE AllowAmbiguousTypes     #-}
 {-# LANGUAGE FlexibleInstances     #-}
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE LambdaCase            #-}
@@ -73,8 +74,8 @@ data Num a => Sig a
     | Zero
     deriving (Show)
 
-instance (CType a, Num a, Show a, Eq a) => Partition Sig a where
-    partition var = PartitionData preds constructors
+instance (CType a, Eq a, Num a, Show a) => Partition a (Sig a) where
+    partition var = zip constructors preds
       where
         preds = [var >. 0, var <. 0, var ==. 0]
         constructors = [Pos var, Neg var, Zero]
@@ -113,13 +114,13 @@ ex2 var = case' var $ \case
     CharA _    -> pure $ xval True
     CharNotA _ -> pure $ xval False
 
-data PartChar a
+data PartChar
     = CharA (Xp Char)
     | CharNotA (Xp Char)
     deriving (Show)
 
-instance Partition PartChar Char where
-    partition var = PartitionData preds constructors
+instance Partition Char PartChar where
+    partition var = zip constructors preds
       where
         preds = [var ==. xval 'A', var /=. xval 'A']
         constructors = [CharA var, CharNotA var]
@@ -181,19 +182,19 @@ needsWatering temp moistLvl = case' moistLvl $ \case
 type Moisture = Double
 type Temp     = Int
 
-data PartMoisture a
+data PartMoisture
     = MoistureDry (Xp Double)
     | MoistureOk  (Xp Double)
     deriving (Show)
 
-data PartTemp a
+data PartTemp
     = TempCold (Xp Int)
     | TempOk (Xp Int)
     | TempHot (Xp Int)
     deriving (Show)
 
-instance Partition PartMoisture Double where
-    partition var = PartitionData preds constructors
+instance Partition Double PartMoisture where
+    partition var = zip constructors preds
       where
         preds =
             [ var <. 0.2  -- Dry
@@ -204,8 +205,8 @@ instance Partition PartMoisture Double where
             , MoistureOk  var
             ]
 
-instance Partition PartTemp Int where
-    partition var = PartitionData preds constructors
+instance Partition Int PartTemp where
+    partition var = zip constructors preds
       where
         preds =
             [ var <. 18                -- Cold
