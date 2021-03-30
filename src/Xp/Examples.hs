@@ -16,6 +16,8 @@ Print the C output of a program @(p :: Hiska (Xp a))@ with
 
 module Xp.Examples where
 
+import Data.Bifunctor
+
 import Xp.Core
 import Xp.Compile (compile)
 import Xp.TH
@@ -273,3 +275,49 @@ ex4 input = case' input $ \case
         SplitFrac int frac -> frac
     Neg n -> pure n
     Zero -> pure $ 0
+
+-- * Ex 5
+
+data Size = Large | Small
+    deriving Show
+
+data Clone = Clone (Xp Int) (Xp Int)
+    deriving Show
+
+class Part a p where
+    part :: Xp a -> [(p, Xp Bool)]
+
+instance Part Int Size where
+    part var = [(Large, var >. 9), (Small, var <. 9)]
+
+instance Struct Clone where
+    structName = "Clone"
+    toFields (Clone x y) = [Field TInt "x" x, Field TInt "y" y]
+    fromFields [Field TInt "x" x, Field TInt "y" y] = (Clone x y)
+    dummy = Clone X X
+
+instance ToStruct Int Clone where
+    toStruct n = Clone n n
+
+prog5 :: Xp Int -> Hiska (Xp Int)
+prog5 var = branch var $ \case
+    Large -> decon $ \ (Clone x y) -> x + y
+    Small -> pure . (+ 1)
+
+decon = flip case2
+
+branch :: forall a p s b .
+    ( Part a p
+    , Show a
+    )
+    => Xp a
+    -> (p -> Xp a -> Hiska (Xp b))
+    -> Hiska (Xp b)
+branch scrut f = do
+    scrutId <- freshId
+
+    let (parts, preds) = unzip $ part @a @p (SVar scrutId)
+
+    bodies <- mapM (\ p -> f p (SVar scrutId)) parts
+
+    pure $ CaseOf (Scrut scrutId scrut) (zip preds bodies)

@@ -112,6 +112,13 @@ data Xp a where
         -> Xp b
         -> Xp b
 
+    CaseOf ::
+        ( Show a
+        )
+        => Scrut a
+        -> [(Xp Bool, Xp b)]
+        -> Xp b
+
     IfThenElse ::
         ( CType a
         )
