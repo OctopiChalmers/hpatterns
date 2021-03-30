@@ -151,42 +151,19 @@ cXp = \case
     X.Or  e1 e2 -> binOp "||" e1 e2
     X.Not e -> ("(!" ++) . (++ ")") <$> cXp e
 
-    (X.IfThenElse cond eTrue eFalse :: Xp retType) -> do
-        funName <- freshId
-        Name resVar <- freshId
-        eTrueStr <- cXp eTrue
-        eFalseStr <- cXp eFalse
-        let def = concat
-                [ X.cType @retType, " ", unName funName,
-                    "(", X.cType @Bool, " condition) {\n"
-                , "    ", X.cType @retType, " ", resVar, ";\n"
-                , "    if (condition) {\n"
-                , "        ", resVar, " = ", eTrueStr, ";\n"
-                , "    }\n"
-                , "    else {\n"
-                , "        ", resVar, " = ", eFalseStr, ";\n"
-                , "    }\n"
-                , "    return ", resVar, ";\n"
-                , "}\n"
-                ]
-        Lens.Mtl.modifying cmDefs (def :)
-
-        condStr <- cXp cond
-        pure $ concat [unName funName, "(", condStr, ")"]
-
-    (X.Case (X.Scrut scrutName (scrut :: Xp scrutType)) matches :: Xp retType)
+    (X.SumMatch (X.Scrut scrutId (scrut :: Xp scrutType)) matches :: Xp retType)
         -> do
 
         funName <- freshId
 
-        newCaseFun @retType @scrutType funName (Name scrutName, matches)
+        newCaseFun @retType @scrutType funName (Name scrutId, matches)
         scrutStr <- cXp scrut
 
         pure $ mconcat [unName funName, "(", scrutStr, ")"]
 
-    X.Case2
+    X.ProdMatch
         (Proxy :: Proxy pt)
-        (X.Scrut scrutName (transformee :: Xp t))
+        (X.Scrut scrutId (transformee :: Xp t))
         (body :: Xp retType)
         -> do
 
@@ -206,7 +183,7 @@ cXp = \case
                 [unName structReturnerFunName, "(", transformeeStr, ")"]
 
         -- Create function for the pattern matching logic!
-        newGlobalVar (sName ++ "*") scrutName
+        newGlobalVar (sName ++ "*") scrutId
         funName <- freshId
         Name argName <- freshId
         Name retVar <- freshId
@@ -214,7 +191,7 @@ cXp = \case
         let retType = X.cType @retType
         let def = concat
                 [ retType, " ", unName funName, "(", sName, "* ", argName, ") {\n"
-                , "    ", scrutName, " = ", argName, ";\n"
+                , "    ", scrutId, " = ", argName, ";\n"
                 , "    ", retType, " ", retVar, " = ", bodyStr, ";\n"
                 , "    return ", retVar, ";\n"
                 , "}\n"

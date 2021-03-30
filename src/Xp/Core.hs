@@ -20,7 +20,7 @@ import qualified Lens.Micro as Lens
 import qualified Lens.Micro.Mtl as Lens
 import qualified Lens.Micro.TH as Lens
 
-import Data.Proxy
+import Data.Proxy (Proxy (..))
 
 
 --
@@ -54,7 +54,6 @@ freshId = do
 -- * Main data type
 --
 
-
 data Xp a where
     X :: Xp a
 
@@ -85,8 +84,8 @@ data Xp a where
         => FieldRef pt
         -> Xp a
 
-    -- | Representation of a case-expression.
-    Case ::
+    -- | Representation of branching on partitioning.
+    SumMatch ::
         ( Show a
         , CType a
         , CType b
@@ -99,7 +98,8 @@ data Xp a where
         -- The body of the match uses 'SVar's to refer to the scrutinee.
         -> Xp b
 
-    Case2 ::
+    -- | Representation of deconstruction of a product type.
+    ProdMatch ::
         ( Show a
         , ToStruct a pt
         , CType a
@@ -111,21 +111,6 @@ data Xp a where
         -> Scrut a
         -> Xp b
         -> Xp b
-
-    CaseOf ::
-        ( Show a
-        )
-        => Scrut a
-        -> [(Xp Bool, Xp b)]
-        -> Xp b
-
-    IfThenElse ::
-        ( CType a
-        )
-        => Xp Bool
-        -> Xp a
-        -> Xp a
-        -> Xp a
 
     -- Primitive operators.
     Add :: (CType a, Num a) => Xp a -> Xp a -> Xp a
@@ -259,7 +244,7 @@ case2 scrut f = do
 
     let body = f (symStruct scrutName)
 
-    pure $ Case2 (Proxy @pt) (Scrut scrutName scrut) body
+    pure $ ProdMatch (Proxy @pt) (Scrut scrutName scrut) body
   where
     -- Create an instance of the struct type with all fields as symbolic
     -- references (SFieldRef) pointing to the scrutinee.
@@ -307,7 +292,7 @@ branch scrut f = do
 
     bodies <- mapM (\ p -> f p (SVar scrutId)) parts
 
-    pure $ Case (Scrut scrutId scrut) (zip preds bodies)
+    pure $ SumMatch (Scrut scrutId scrut) (zip preds bodies)
 
 --
 -- * Other combinators
@@ -345,9 +330,6 @@ xvar = Var
 
 xval :: CType a => a -> Xp a
 xval = Val
-
-ifte :: CType a => Xp Bool -> Xp a -> Xp a -> Xp a
-ifte = IfThenElse
 
 cast :: (CType a, CType b, Show a) => TRep b -> Xp a -> Xp b
 cast = Cast
