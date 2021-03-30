@@ -41,7 +41,7 @@ ex1 var = branch var $ \case
     Zero -> pure
 
 data Sig = Pos | Neg | Zero
-    deriving (Show)
+    deriving (Show, Enum)
 
 instance (CType a, Eq a, Num a, Show a) => Partition a Sig where
     partition var =
@@ -65,7 +65,7 @@ ex2 var = branch var $ \case
 data PartChar
     = CharA
     | CharNotA
-    deriving (Show)
+    deriving (Show, Enum)
 
 instance Partition Char PartChar where
     partition var = [(CharA, var ==. xval 'A'), (CharNotA, var /=. xval 'A')]
@@ -96,13 +96,13 @@ type Temp     = Int
 data PartMoisture
     = MoistureDry
     | MoistureOk
-    deriving (Show)
+    deriving (Show, Enum)
 
 data PartTemp
     = TempCold
     | TempOk
     | TempHot
-    deriving (Show)
+    deriving (Show, Enum)
 
 instance Partition Double PartMoisture where
     partition var =
@@ -152,7 +152,7 @@ instance ToStruct Double SplitFrac where
 
 ex4 :: Xp Double -> Hiska (Xp Double)
 ex4 input = branch input $ \case
-    Pos -> decon $ \ (SplitFrac int frac) -> frac
+    Pos  -> as $ \ (SplitFrac int frac) -> frac
     Neg  -> pure
     Zero -> pure
 
@@ -161,7 +161,7 @@ ex4 input = branch input $ \case
 --
 
 data Size = Large | Small
-    deriving Show
+    deriving (Show, Enum)
 
 data Clone = Clone (Xp Int) (Xp Int)
     deriving Show
@@ -173,12 +173,12 @@ instance Struct Clone where
     structName = "Clone"
     toFields (Clone x y) = [Field TInt "x" x, Field TInt "y" y]
     fromFields [Field TInt "x" x, Field TInt "y" y] = (Clone x y)
-    dummy = Clone X X
+    dummy = Clone (error "dummy") (error "dummy")
 
 instance ToStruct Int Clone where
     toStruct n = Clone n n
 
 prog5 :: Xp Int -> Hiska (Xp Int)
 prog5 var = branch var $ \case
-    Large -> decon $ \ (Clone x y) -> x + y
+    Large -> as $ \ (Clone x y) -> x + y
     Small -> pure . (+ 1)

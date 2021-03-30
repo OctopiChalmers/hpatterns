@@ -116,13 +116,13 @@ data Xp a where
     Add :: (CType a, Num a) => Xp a -> Xp a -> Xp a
     Mul :: (CType a, Num a) => Xp a -> Xp a -> Xp a
     Sub :: (CType a, Num a) => Xp a -> Xp a -> Xp a
-    Div :: (Fractional a) =>        Xp a -> Xp a -> Xp a
-    Gt  :: (Show a, Num a) =>       Xp a -> Xp a -> Xp Bool
-    Lt  :: (Show a, Num a) =>       Xp a -> Xp a -> Xp Bool
-    Eq  :: (Show a, Eq a) =>        Xp a -> Xp a -> Xp Bool
-    Not ::                          Xp Bool -> Xp Bool
-    And ::                          Xp Bool -> Xp Bool -> Xp Bool
-    Or  ::                          Xp Bool -> Xp Bool -> Xp Bool
+    Div :: (Fractional a) =>   Xp a -> Xp a -> Xp a
+    Gt  :: (Show a, Num a) =>  Xp a -> Xp a -> Xp Bool
+    Lt  :: (Show a, Num a) =>  Xp a -> Xp a -> Xp Bool
+    Eq  :: (Show a, Eq a) =>   Xp a -> Xp a -> Xp Bool
+    Not ::                     Xp Bool -> Xp Bool
+    And ::                     Xp Bool -> Xp Bool -> Xp Bool
+    Or  ::                     Xp Bool -> Xp Bool -> Xp Bool
 deriving stock instance Show a => Show (Xp a)
 
 -- | Data type representing the scrutinee in a case construct.
@@ -203,8 +203,7 @@ class Struct pt where
     The values of its 'Field's can be undefined. The dummy values should not
     be used.
     -}
-    dummy :: pt  -- Generate this with GHC generics? Or maybe TH?
-                 -- We only want the types and names of the fields here.
+    dummy :: pt  -- Generate this with GHC generics? Or maybe TH? This is ugly.
 
 type Fields a = [Field]
 data Field = forall a . (CType a, Show a) => Field
@@ -229,36 +228,48 @@ data FieldRef a = FieldRef
     Int     -- ^ Index of struct, i.e. which field of the struct.
     deriving Show
 
--- | Case analysis on a scrutinee that can be translated to a struct type.
-case2 :: forall pt a b .
-    ( ToStruct a pt
+-- ** Combinators
+
+-- | Deconstruction on a scrutinee that can be translated to a struct type.
+deconstruct :: forall a p b .
+    ( ToStruct a p
     , Show a
     , CType a
     , CType b
     )
     => Xp a
-    -> (pt -> Xp b)
+    -> (p -> Xp b)
     -> Hiska (Xp b)
-case2 scrut f = do
-    scrutName <- freshId
+deconstruct scrut f = do
+    -- Generate an internal name for the scrutinee (see why below).
+    scrutId <- freshId
 
-    let body = f (symStruct scrutName)
+    let body = f (symStruct scrutId)
 
-    pure $ ProdMatch (Proxy @pt) (Scrut scrutName scrut) body
+    -- The reason for using Proxy is to give the compiler information about
+    -- the struct type, so that it can generate the proper names and types.
+    pure $ ProdMatch (Proxy @p) (Scrut scrutId scrut) body
   where
     -- Create an instance of the struct type with all fields as symbolic
-    -- references (SFieldRef) pointing to the scrutinee.
-    symStruct :: String -> pt
-    symStruct scrutName =
+    -- references (SFieldRef) pointing to the scrutinee. We need to do this
+    -- so that the variables referenced by the _user_ actually refer to the
+    -- scrutinee, since we don't actually transform the scrutinee (instead,
+    -- we use its type to generate a _new_ struct). Because the user will
+    -- be using variables from this generated struct and not the actual
+    -- scrutinee, we need to manually maintain the relationship between the
+    -- generated struct and the scrutinee.
+    symStruct :: String -> p
+    symStruct scrutId =
         fromFields
         $ zipWith mkSymField [0 ..]
-        $ toFields (dummy @pt)
+        $ toFields (dummy @p)
       where
         mkSymField :: Int -> Field -> Field
         mkSymField idx (Field t s _) =
-            Field t s $ SFieldRef @pt $ FieldRef scrutName idx
+            Field t s $ SFieldRef @p $ FieldRef scrutId idx
 
-decon :: forall a s b .
+-- | 'deconstruct' with arguments flipped.
+as :: forall a s b .
     ( ToStruct a s
     , Show a
     , CType a
@@ -267,13 +278,21 @@ decon :: forall a s b .
     => (s -> Xp b)
     -> Xp a
     -> Hiska (Xp b)
-decon = flip case2
+as = flip deconstruct
 
 --
 -- * Partitioning
 --
 
-class Partition a p where
+{-| Instances of @Partition a p@ define how values of type @a@ can be
+partitioned into type @p@. @p@ must be enumerable; its constructors represent
+a finite number of partitions for a possibly non-finite type @a@.
+-}
+class Enum p => Partition a p where
+    {-| @Partition a p@ instances must define how an arbitrary value of type
+    @a@ is partitioned. In other words, they must describe
+    (in the Xp language) rules for how to translate from @a@ to @p@.
+    -}
     partition :: Xp a -> [(p, Xp Bool)]
 
 branch :: forall a p s b .
@@ -286,10 +305,12 @@ branch :: forall a p s b .
     -> (p -> Xp a -> Hiska (Xp b))
     -> Hiska (Xp b)
 branch scrut f = do
+    -- We need to generate an internal name for the scrutinee in order to
+    -- make explicit the connection between the variable the _user_ references,
+    -- and the actual scrutinee.
     scrutId <- freshId
 
     let (parts, preds) = unzip $ partition @a @p (SVar scrutId)
-
     bodies <- mapM (\ p -> f p (SVar scrutId)) parts
 
     pure $ SumMatch (Scrut scrutId scrut) (zip preds bodies)
