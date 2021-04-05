@@ -165,7 +165,7 @@ ex4 input = branch input $ \case
 data Size = Large | Small
     deriving (Show, Enum)
 
-data Mirror = Mirror (Xp Float) (Xp Int)
+data Mirror = Mirror (Xp Int) (Xp Int)
     deriving Show
 $(deriveStruct ''Mirror)
 

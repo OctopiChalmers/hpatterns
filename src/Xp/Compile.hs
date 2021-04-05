@@ -183,14 +183,14 @@ cXp = \case
                 [unName structReturnerFunName, "(", transformeeStr, ")"]
 
         -- Create function for the pattern matching logic!
-        newGlobalVar (sName ++ "*") scrutId
+        newGlobalVar sName scrutId
         funName <- freshId
         Name argName <- freshId
         Name retVar <- freshId
         bodyStr <- cXp body
         let retType = X.cType @retType
         let def = concat
-                [ retType, " ", unName funName, "(", sName, "* ", argName, ") {\n"
+                [ retType, " ", unName funName, "(", sName, " ", argName, ") {\n"
                 , "    ", scrutId, " = ", argName, ";\n"
                 , "    ", retType, " ", retVar, " = ", bodyStr, ";\n"
                 , "    return ", retVar, ";\n"
@@ -203,7 +203,7 @@ cXp = \case
 
     X.SFieldRef (X.FieldRef name idx :: X.FieldRef pt) -> do
         let (X.Field _ s _) = X.toFields (X.dummy @pt) !! idx
-        pure $ concat [name, "->", s]
+        pure $ concat [name, ".", s]
 
     X.Cast t e -> do
         eStr <- cXp e
@@ -309,10 +309,9 @@ newStructReturnerDef (Name funName) = do
 
     Name retVar <- freshId
     let def = concat
-            [ sName, "* ", funName, "(", transformeeType, " arg) {\n"
+            [ sName, " ", funName, "(", transformeeType, " arg) {\n"
             , "    ", transformeeId, " = arg;\n"
-            -- TODO: SET UP free() SOMEHOW SO WE DON'T GET MEMORY LEAKS HERE
-            , "    ", sName, "* ", retVar, " = malloc(sizeof(", sName, "));\n"
+            , "    ", sName, " ", retVar, ";\n"
             , concatMap (\ xs -> "    " ++ retVar ++ xs ++ ";\n") insts
             , "    return ", retVar, ";\n"
             , "}\n"
@@ -322,7 +321,7 @@ newStructReturnerDef (Name funName) = do
     instField :: X.Field -> Compile String
     instField (X.Field _ s v) = do
         vStr <- cXp v
-        pure $ concat ["->", s, " = ", vStr]
+        pure $ concat [".", s, " = ", vStr]
 
 -- | Create a struct definition and add it to the compilation state.
 newStructDef :: forall pt . X.Struct pt => Compile ()
