@@ -52,6 +52,20 @@ instance (CType a, Eq a, Num a, Show a) => Partition a Sig where
         , (Zero, var ==. 0)
         ]
 
+-- instance Partition Double Sig where
+--     partition = ...
+
+-- data Sig = Pos Int | Neg
+
+-- Existential types?
+-- partition :: Partition a p => [(p, (a -> Bool), ???)]
+-- (Pos, var >. 0, \v -> v + 1.5)
+-- (Neg, var <. 0, \v -> v + 1)
+-- (Zero, var ==. 0, \v -> v)
+
+-- case' :: ? -> ? -> ?
+
+
 --
 -- * Example 2
 --
@@ -142,8 +156,11 @@ instance Struct SplitFrac where
 
     dummy = SplitFrac (error "dummy") (error "dummy")
 
+-- (Pos, var >. 0, \v -> v - (cast TDouble int))
+
 instance ToStruct Double SplitFrac where
     -- | Split a double into its integer and fractional part
+    -- toStruct :: Xp Double -> SplitFrac
     toStruct double = SplitFrac int frac
       where
         int :: Xp Int
