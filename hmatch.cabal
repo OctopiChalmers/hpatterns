@@ -12,7 +12,9 @@ extra-source-files:
 
 library
   exposed-modules:
-      Xp.Core
+      E.Core
+
+    , Xp.Core
     , Xp.Compile
     , Xp.Examples
     , Xp.HalftimeExamples
