@@ -34,7 +34,7 @@ class Generic p => Partition p a where
 
 instance Partition Sig Double where
     partition =
-        [ \ v -> (v >. 0, Pos $ c_floorInt v)
+        [ \ v -> (v >. 0, Pos $ floorIntE v)
         , \ v -> (v >. 0, Neg)
         ]
 
@@ -112,7 +112,7 @@ infix 4 ==.
 
 infix 4 /=.
 (/=.) :: (Eq a, CType a) => E a -> E a -> E Bool
-x /=. y = e_not (x `EEq` y)
+x /=. y = notE (x `EEq` y)
 
 infixr 3 &&.
 (&&.) :: E Bool -> E Bool -> E Bool
@@ -122,26 +122,29 @@ infixr 2 ||.
 (||.) :: E Bool -> E Bool -> E Bool
 (||.) = EOr
 
-e_not :: E Bool -> E Bool
-e_not = ENot
+(!.) :: E Bool -> E Bool
+(!.) = notE
 
-e_var :: String -> E a
-e_var = EVar
+notE :: E Bool -> E Bool
+notE = ENot
 
-e_val :: a -> E a
-e_val = EVal
+varE :: String -> E a
+varE = EVar
+
+valE :: a -> E a
+valE = EVal
 
 
 -- * Uses <math.h>
 
-c_floorDouble :: E Double -> E Double
-c_floorDouble = ECFloorDouble
+floorDoubleE :: E Double -> E Double
+floorDoubleE = ECFloorDouble
 
-c_floorInt :: E Double -> E Int
-c_floorInt = ECFloorInt
+floorIntE :: E Double -> E Int
+floorIntE = ECFloorInt
 
-c_fracPart :: E Double -> E Double
-c_fracPart d = d - c_floorDouble d
+fracPartE :: E Double -> E Double
+fracPartE d = d - floorDoubleE d
 
 
 -- * Auxiliary stuff
