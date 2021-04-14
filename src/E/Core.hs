@@ -35,12 +35,12 @@ class Generic p => Partition p a where
 instance Partition Sig Double where
     partition =
         [ \ v -> (v >. 0, Pos $ floorIntE v)
-        , \ v -> (v >. 0, Neg)
+        , \ v -> (v <. 0, Neg)
         ]
 
-case' :: forall p a b . Partition p a
-    => E a
-    -> (Rep p -> E b)
+case' :: forall p a b . (Partition p a, CType a, CType b)
+    => E a             -- ^ Scrutinee.
+    -> (Rep p -> E b)  -- ^ Function applied to the ADT (representation).
     -> Estate (E b)
 case' s f = do
     scrutVar <- freshId
@@ -57,9 +57,9 @@ case' s f = do
 data Scrut a = Scrut (E a) String
 
 data Match p b where
-    Match
-        :: E Bool
-        -> (Rep p)
+    Match :: forall p b . CType b
+        => E Bool
+        -> Rep p
         -> E b
         -> Match p b
 
@@ -68,7 +68,10 @@ data E a where
     EVar :: String -> E a
 
     ESym :: String -> E a
-    ECase :: Partition p a => Scrut a -> [Match p b] -> E b
+    ECase :: (Partition p a, CType a, CType b)
+        => Scrut a
+        -> [Match p b]
+        -> E b
 
     EAdd :: (Num a) =>          E a -> E a -> E a
     EMul :: (Num a) =>          E a -> E a -> E a
@@ -76,6 +79,8 @@ data E a where
     EDiv :: (Fractional a) =>   E a -> E a -> E a
     EGt  :: (Num a, CType a) => E a -> E a -> E Bool
     ELt  :: (Num a, CType a) => E a -> E a -> E Bool
+    EGte :: (Num a, CType a) => E a -> E a -> E Bool
+    ELte :: (Num a, CType a) => E a -> E a -> E Bool
     EEq  :: (Eq a, CType a) =>  E a -> E a -> E Bool
     ENot ::                     E Bool -> E Bool
     EAnd ::                     E Bool -> E Bool -> E Bool
@@ -102,9 +107,17 @@ infix 4 >.
 (>.) :: (Num a, CType a) => E a -> E a -> E Bool
 (>.) = EGt
 
+infix 4 >=.
+(>=.) :: (Num a, CType a) => E a -> E a -> E Bool
+(>=.) = EGte
+
 infix 4 <.
 (<.) :: (Num a, CType a) => E a -> E a -> E Bool
 (<.) = ELt
+
+infix 4 <=.
+(<=.) :: (Num a, CType a) => E a -> E a -> E Bool
+(<=.) = ELte
 
 infix 4 ==.
 (==.) :: (Eq a, CType a) => E a -> E a -> E Bool
