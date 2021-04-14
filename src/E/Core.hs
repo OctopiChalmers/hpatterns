@@ -50,14 +50,6 @@ case' s f = do
 
     pure $ ECase (Scrut s scrutVar) matches
 
-ex :: E Double -> Estate (E Int)
-ex v = case' @Sig v $ \case
-    SOP (Z (I n :* Nil)) -> n + 1
-    SOP (S (Z Nil)) -> 0
-
-    SOP (S (S _)) -> error "impossible by construction"
-    -- Neg   -> 0
-
 --
 -- * Main data type
 --

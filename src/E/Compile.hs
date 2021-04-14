@@ -67,7 +67,7 @@ compile expr =
 
         -- #include lines
         , concatMap ((++ "\n") . includeWrap)
-            ["stdbool.h", "stdlib.h", "stdio.h"], "\n"
+            ["stdbool.h", "stdlib.h", "stdio.h", "math.h"], "\n"
 
         -- Define structs
         , "// Structs representing product types\n"

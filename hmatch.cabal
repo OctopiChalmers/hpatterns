@@ -15,6 +15,7 @@ library
       E.Core
     , E.Compile
     , E.CTypes
+    , E.Examples
 
     -- , Xp.Core
     -- , Xp.Compile
