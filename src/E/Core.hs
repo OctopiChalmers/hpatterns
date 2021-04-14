@@ -16,56 +16,58 @@
 
 module E.Core where
 
-import Data.Kind
-import Data.Void
-
 import Data.SOP
 import Generics.SOP
+
+import E.CTypes
 
 import qualified Control.Monad.State.Strict as St
 import qualified GHC.Generics as GG
 
 
-data Sig = Pos (E Int) | Neg deriving GG.Generic
+data Sig = Pos (E Int) | Neg
+    deriving GG.Generic
 instance Generic Sig
 
 class Generic p => Partition p a where
-    type P p :: [[*]]
-
-    partition :: [E a -> (E Bool, SOP I (P p))]
+    partition :: [E a -> (E Bool, p)]
 
 instance Partition Sig Double where
-    type P Sig = '[ '[E Int] , '[] ]
-
     partition =
-        [ \ v -> (v >. 0, from $ Pos $ c_floorInt v)
-        , \ v -> (v >. 0, from Neg)
+        [ \ v -> (v >. 0, Pos $ c_floorInt v)
+        , \ v -> (v >. 0, Neg)
         ]
 
 case' :: forall p a b . Partition p a
     => E a
-    -> (SOP I (P p) -> E b)
+    -> (Rep p -> E b)
     -> Estate (E b)
 case' s f = do
     scrutVar <- freshId
 
     let branches = map ($ ESym scrutVar) $ partition @p @a
-    let matches = map (\ (cond, sop) -> Match @p @b cond sop (f sop)) branches
+    let matches = map (\ (cond, t) -> Match @p @b cond (from t) (f $ from t)) branches
 
     pure $ ECase (Scrut s scrutVar) matches
 
 ex :: E Double -> Estate (E Int)
 ex v = case' @Sig v $ \case
     SOP (Z (I n :* Nil)) -> n + 1
-    _ -> undefined
+    SOP (S (Z Nil)) -> 0
+
+    SOP (S (S _)) -> error "impossible by construction"
     -- Neg   -> 0
+
+--
+-- * Main data type
+--
 
 data Scrut a = Scrut (E a) String
 
 data Match p b where
     Match
         :: E Bool
-        -> SOP I (P p)
+        -> (Rep p)
         -> E b
         -> Match p b
 
@@ -76,16 +78,16 @@ data E a where
     ESym :: String -> E a
     ECase :: Partition p a => Scrut a -> [Match p b] -> E b
 
-    EAdd :: (Num a) =>        E a -> E a -> E a
-    EMul :: (Num a) =>        E a -> E a -> E a
-    ESub :: (Num a) =>        E a -> E a -> E a
-    EDiv :: (Fractional a) => E a -> E a -> E a
-    EGt  :: (Num a) =>        E a -> E a -> E Bool
-    ELt  :: (Num a) =>        E a -> E a -> E Bool
-    EEq  :: (Eq a) =>         E a -> E a -> E Bool
-    ENot ::                   E Bool -> E Bool
-    EAnd ::                   E Bool -> E Bool -> E Bool
-    EOr  ::                   E Bool -> E Bool -> E Bool
+    EAdd :: (Num a) =>          E a -> E a -> E a
+    EMul :: (Num a) =>          E a -> E a -> E a
+    ESub :: (Num a) =>          E a -> E a -> E a
+    EDiv :: (Fractional a) =>   E a -> E a -> E a
+    EGt  :: (Num a, CType a) => E a -> E a -> E Bool
+    ELt  :: (Num a, CType a) => E a -> E a -> E Bool
+    EEq  :: (Eq a, CType a) =>  E a -> E a -> E Bool
+    ENot ::                     E Bool -> E Bool
+    EAnd ::                     E Bool -> E Bool -> E Bool
+    EOr  ::                     E Bool -> E Bool -> E Bool
 
     -- C stuff
 
@@ -105,19 +107,19 @@ instance (Fractional a) => Fractional (E a) where
     (/) = EDiv
 
 infix 4 >.
-(>.) :: (Num a) => E a -> E a -> E Bool
+(>.) :: (Num a, CType a) => E a -> E a -> E Bool
 (>.) = EGt
 
 infix 4 <.
-(<.) :: (Num a) => E a -> E a -> E Bool
+(<.) :: (Num a, CType a) => E a -> E a -> E Bool
 (<.) = ELt
 
 infix 4 ==.
-(==.) :: (Eq a) => E a -> E a -> E Bool
+(==.) :: (Eq a, CType a) => E a -> E a -> E Bool
 (==.) = EEq
 
 infix 4 /=.
-(/=.) :: (Eq a) => E a -> E a -> E Bool
+(/=.) :: (Eq a, CType a) => E a -> E a -> E Bool
 x /=. y = e_not (x `EEq` y)
 
 infixr 3 &&.

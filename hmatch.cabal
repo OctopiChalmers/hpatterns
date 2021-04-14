@@ -14,6 +14,7 @@ library
   exposed-modules:
       E.Core
     , E.Compile
+    , E.CTypes
 
     -- , Xp.Core
     -- , Xp.Compile
