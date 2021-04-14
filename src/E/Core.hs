@@ -102,17 +102,34 @@ freshId = do
 class Generic p => Partition p a where
     partition :: [E a -> (E Bool, p)]
 
-case' :: forall p a b . (Partition p a, CType a, CType b)
+match :: forall p a b . (Partition p a, CType a, CType b)
     => E a             -- ^ Scrutinee.
     -> (Rep p -> E b)  -- ^ Function applied to the ADT (representation).
     -> Estate (E b)
-case' s f = do
+match s f = do
     scrutVar <- freshId
 
     let branches = map ($ ESym scrutVar) $ partition @p @a
     let matches = map (\ (cond, t) -> Match @p @b cond (from t) (f $ from t)) branches
 
     pure $ ECase (Scrut s scrutVar) matches
+
+matchM :: forall p a b . (Partition p a, CType a, CType b)
+    => E a
+    -- ^ Scrutinee.
+    -> (Rep p -> Estate (E b))
+    -- ^ Function applied to the ADT (representation).
+    -> Estate (E b)
+matchM s f = do
+    scrutVar <- freshId
+
+    let branches = map ($ ESym scrutVar) $ partition @p @a
+    matches <- mapM (\ (cond, adt) -> do
+        body <- f (from adt)
+        pure $ Match @p @b cond (from adt) body) branches
+
+    pure $ ECase (Scrut s scrutVar) matches
+
 
 --
 -- * Straightforward operators

@@ -9,7 +9,6 @@
 
 module E.Compile where
 
-import Data.Functor ((<&>))
 import Lens.Micro
 import Lens.Micro.Mtl
 
@@ -78,7 +77,7 @@ compile expr =
 
         -- Declare global variables
         , "// Variables correpsonding to scrutinees in case expressions\n"
-        , unlines (st ^. csGlobals), "\n"
+        , concat (st ^. csGlobals), "\n"
 
         -- The definitions are added in the wrong order (for the C code),
         -- so we reverse the list of definitions before printing them.
@@ -115,7 +114,7 @@ ce expr = case expr of
     EVar s -> pure s
 
     ESym s -> pure s
-    ECase scrut@(Scrut e sName) matches -> do
+    ECase scrut@(Scrut e _sName) matches -> do
         fName <- newCaseDef scrut matches
         scrutStr <- ce e
         pure $ concat [unName fName, "(", scrutStr, ")"]
@@ -155,23 +154,28 @@ newCaseDef :: forall p a b . (CType a, CType b)
     => Scrut a
     -> [Match p b]
     -> Compile Name
-newCaseDef (Scrut scrut sName) matches = do
+newCaseDef scrut@(Scrut _scrutExp sName) matches = do
+    newGlobalVar scrut
     fName <- freshCid
     ifs <- cMatches matches
 
     let def = concat
-            [ ctype @b, " ", unName fName, "(", ctype @a, " ", sName, ") {\n"
-            , "    ", ctype @b, " ", resVar, ";\n"
+            [ ctype @b, " ", unName fName, "(", ctype @a, " ", argName, ") {\n"
+            , "    ", sName, " = ", argName, ";\n"
+            , "    ", ctype @b, " ", resName, ";\n"
             , concatMap (\ x -> "    " ++ x ++ "\n") ifs
-            , "    return ", resVar, ";\n"
+            , "    return ", resName, ";\n"
             , "}\n"
             ]
     modifying csDefs (def :)
     pure fName
 
   where
-    resVar :: String
-    resVar = "res"
+    resName :: String
+    resName = "res"
+
+    argName :: String
+    argName = "arg"
 
     cMatches :: [Match p b] -> Compile [String]
     cMatches xs = do
@@ -187,4 +191,12 @@ newCaseDef (Scrut scrut sName) matches = do
             cond' <- ce cond
             body' <- ce body
             pure $ concat
-                ["if (", cond', ") { ", resVar, " = ", body', "; } else "]
+                ["if (", cond', ") { ", resName, " = ", body', "; } else "]
+
+{- | Add a global variable to the compilation state, for holding the value
+of a scrutinee.
+-}
+newGlobalVar :: forall a . CType a => Scrut a -> Compile ()
+newGlobalVar (Scrut _ sName) =
+    let def = concat [ctype @a, " ", sName, ";\n"]
+    in modifying csGlobals (def :)
