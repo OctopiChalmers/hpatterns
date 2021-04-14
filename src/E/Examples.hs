@@ -5,6 +5,8 @@
 {-# LANGUAGE GADTs                 #-}
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PatternSynonyms       #-}
+{-# LANGUAGE ScopedTypeVariables   #-}
 {-# LANGUAGE TypeApplications      #-}
 
 module E.Examples where
@@ -40,11 +42,39 @@ ex2 v = matchM @Sig v $ \case
         SOP (S (Z (I x :* Nil)      )) -> pure $ x + n
         SOP (S (S _                 )) -> error "impossible by construction"
 
-data Size = Large (E Int) (E Int) | Small (E Int)
-    deriving (GG.Generic, Generic)
+data Size
+    = Large (E Int) (E Int)
+    | Small (E Int)
+    deriving (Generic, GG.Generic)
 
 instance Partition Size Int where
     partition =
         [ \ v -> (v >. 100, Large v v)
         , \ v -> (valE True, Small (v + 1))
         ]
+
+{- | Ex 3. Using pattern synonyms, we can improve ergonomics. -}
+
+pattern Pos_ :: E Int -> Rep Sig
+pattern Pos_ n = SOP (Z (I n :* Nil))
+pattern Neg_ :: Rep Sig
+pattern Neg_ = SOP (S (Z Nil))
+
+pattern Large_ :: E Int -> E Int -> Rep Size
+pattern Large_ x y = SOP (Z (I x :* I y :* Nil))
+pattern Small_ :: E Int -> Rep Size
+pattern Small_ x = SOP (S (Z (I x :* Nil)))
+
+ex2improved :: E Double -> Estate (E Int)
+ex2improved v = matchM @Sig v $ \case
+    Neg_   -> pure 0
+    Pos_ n -> matchM @Size n $ \case
+        Large_ x y -> pure (x + y)
+        Small_ x   -> pure (x + n)
+
+
+
+    -- Non-exhaustive without this???
+        _ -> undefined
+    _ -> undefined
+
