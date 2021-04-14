@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
@@ -22,56 +23,24 @@ import Generics.SOP
 import E.CTypes
 
 import qualified Control.Monad.State.Strict as St
-import qualified GHC.Generics as GG
 
-
-data Sig = Pos (E Int) | Neg
-    deriving GG.Generic
-instance Generic Sig
-
-class Generic p => Partition p a where
-    partition :: [E a -> (E Bool, p)]
-
-instance Partition Sig Double where
-    partition =
-        [ \ v -> (v >. 0, Pos $ floorIntE v)
-        , \ v -> (v <. 0, Neg)
-        ]
-
-case' :: forall p a b . (Partition p a, CType a, CType b)
-    => E a             -- ^ Scrutinee.
-    -> (Rep p -> E b)  -- ^ Function applied to the ADT (representation).
-    -> Estate (E b)
-case' s f = do
-    scrutVar <- freshId
-
-    let branches = map ($ ESym scrutVar) $ partition @p @a
-    let matches = map (\ (cond, t) -> Match @p @b cond (from t) (f $ from t)) branches
-
-    pure $ ECase (Scrut s scrutVar) matches
 
 --
 -- * Main data type
 --
 
-data Scrut a = Scrut (E a) String
-
-data Match p b where
-    Match :: forall p b . CType b
-        => E Bool
-        -> Rep p
-        -> E b
-        -> Match p b
-
 data E a where
-    EVal :: a -> E a
-    EVar :: String -> E a
-
+    -- Constructors for pattern matching.
     ESym :: String -> E a
     ECase :: (Partition p a, CType a, CType b)
         => Scrut a
         -> [Match p b]
         -> E b
+
+    -- Straightforward operators.
+
+    EVal :: a -> E a
+    EVar :: String -> E a
 
     EAdd :: (Num a) =>          E a -> E a -> E a
     EMul :: (Num a) =>          E a -> E a -> E a
@@ -86,10 +55,19 @@ data E a where
     EAnd ::                     E Bool -> E Bool -> E Bool
     EOr  ::                     E Bool -> E Bool -> E Bool
 
-    -- C stuff
-
     ECFloorInt    :: E Double -> E Int
     ECFloorDouble :: E Double -> E Double
+
+data Scrut a = Scrut (E a) String
+
+data Match p b where
+    Match :: forall p b . CType b
+        => E Bool
+        -> Rep p
+        -> E b
+        -> Match p b
+
+-- ** Helpful instances for 'E' for better ergonomics.
 
 instance (Num a) => Num (E a) where
     (+) = EAdd
@@ -102,6 +80,43 @@ instance (Num a) => Num (E a) where
 instance (Fractional a) => Fractional (E a) where
     fromRational r = EVal (fromRational r)
     (/) = EDiv
+
+-- ** Auxiliary stuff
+
+type Estate = St.State Int
+
+runEstate :: Estate a -> a
+runEstate x = St.evalState x 0
+
+-- | Return a unique identifier and increment the counter in state.
+freshId :: Estate String
+freshId = do
+    newId <- ("coreId" ++) . show <$> St.get
+    St.modify'(+ 1)
+    pure newId
+
+--
+-- * Pattern matching
+--
+
+class Generic p => Partition p a where
+    partition :: [E a -> (E Bool, p)]
+
+case' :: forall p a b . (Partition p a, CType a, CType b)
+    => E a             -- ^ Scrutinee.
+    -> (Rep p -> E b)  -- ^ Function applied to the ADT (representation).
+    -> Estate (E b)
+case' s f = do
+    scrutVar <- freshId
+
+    let branches = map ($ ESym scrutVar) $ partition @p @a
+    let matches = map (\ (cond, t) -> Match @p @b cond (from t) (f $ from t)) branches
+
+    pure $ ECase (Scrut s scrutVar) matches
+
+--
+-- * Straightforward operators
+--
 
 infix 4 >.
 (>.) :: (Num a, CType a) => E a -> E a -> E Bool
@@ -147,7 +162,6 @@ varE = EVar
 valE :: a -> E a
 valE = EVal
 
-
 -- * Uses <math.h>
 
 floorDoubleE :: E Double -> E Double
@@ -158,18 +172,3 @@ floorIntE = ECFloorInt
 
 fracPartE :: E Double -> E Double
 fracPartE d = d - floorDoubleE d
-
-
--- * Auxiliary stuff
-
-type Estate = St.State Int
-
-runEstate :: Estate a -> a
-runEstate x = St.evalState x 0
-
--- | Return a unique identifier and increment the counter in state.
-freshId :: Estate String
-freshId = do
-    newId <- ("coreId" ++) . show <$> St.get
-    St.modify'(+ 1)
-    pure newId
