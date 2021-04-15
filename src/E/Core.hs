@@ -18,6 +18,7 @@
 module E.Core where
 
 import Data.SOP
+import Data.Kind
 import Generics.SOP
 
 import E.CTypes
@@ -102,44 +103,64 @@ class Generic p => Partition p a where
     partition :: [E a -> (E Bool, p)]
 
 match :: forall p a b . (Partition p a, CType a, CType b)
-    => E a             -- ^ Scrutinee.
-    -> (Rep p -> E b)  -- ^ Function applied to the ADT (representation).
+    => E a
+    -> (Rep p -> E b)
     -> Estate (E b)
 match s f = do
     scrutVar <- freshId
-
     let branches = map ($ ESym scrutVar) $ partition @p @a
-    let matches = map (\ (cond, t) -> Match @p @b cond (f $ from t)) branches
-
-    pure $ ECase (Scrut s scrutVar) matches
+    pure $ ECase (Scrut s scrutVar) (map mkMatch branches)
+  where
+    mkMatch :: (E Bool, p) -> Match p b
+    mkMatch (cond, p) = Match @p @b cond (f (from p))
 
 matchM :: forall p a b . (Partition p a, CType a, CType b)
     => E a
-    -- ^ Scrutinee.
     -> (Rep p -> Estate (E b))
-    -- ^ Function applied to the ADT (representation).
     -> Estate (E b)
 matchM s f = do
     scrutVar <- freshId
-
     let branches = map ($ ESym scrutVar) $ partition @p @a
-    matches <- mapM (\ (cond, adt) -> do
-        body <- f (from adt)
-        pure $ Match @p @b cond body) branches
+    ECase (Scrut s scrutVar) <$> mapM mkMatch branches
+  where
+    mkMatch :: (E Bool, p) -> Estate (Match p b)
+    mkMatch (cond, adt) = Match @p @b cond <$> f (from adt)
 
-    pure $ ECase (Scrut s scrutVar) matches
-
-match2 :: forall p a b . (Partition p a, CType a, CType b)
+{- | Partitioning a scrutinee and apply a pattern matching function on the
+partition type.
+-}
+match' :: forall p a b . (Partition p a, CType a, CType b)
     => E a
     -> (p -> E b)
     -> Estate (E b)
-match2 s f = do
+match' s f = do
+    -- Generate a variable name to differentiate this scrutinee from others
+    -- during compilation.
     scrutVar <- freshId
-
+    -- Apply the partitioning on symbolic variables referring to the scrutinee.
+    -- When the user pattern matches and uses one of these variables, they
+    -- will have the transformation applied by the Partition instance.
     let branches = map ($ ESym scrutVar) $ partition @p @a
-    let matches = map (\ (cond, t) -> Match @p @b cond (f t)) branches
 
-    pure $ ECase (Scrut s scrutVar) matches
+    pure $ ECase (Scrut s scrutVar) (map mkMatch branches)
+  where
+    mkMatch :: (E Bool, p) -> Match p b
+    mkMatch (cond, p) = Match @p @b cond (f p)
+
+{- | Same as match' but the pattern matching function is be monadic (used
+for nested matches).
+-}
+matchM' :: forall p a b . (Partition p a, CType a, CType b)
+    => E a
+    -> (p -> Estate (E b))
+    -> Estate (E b)
+matchM' s f = do
+    scrutVar <- freshId
+    let branches = map ($ ESym scrutVar) $ partition @p @a
+    ECase (Scrut s scrutVar) <$> mapM mkMatch branches
+  where
+    mkMatch :: (E Bool, p) -> Estate (Match p b)
+    mkMatch (cond, p) = Match @p @b cond <$> f p
 
 --
 -- * Straightforward operators
