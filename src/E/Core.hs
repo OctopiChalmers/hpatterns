@@ -63,7 +63,6 @@ data Scrut a = Scrut (E a) String
 data Match p b where
     Match :: forall p b . CType b
         => E Bool
-        -> Rep p
         -> E b
         -> Match p b
 
@@ -110,7 +109,7 @@ match s f = do
     scrutVar <- freshId
 
     let branches = map ($ ESym scrutVar) $ partition @p @a
-    let matches = map (\ (cond, t) -> Match @p @b cond (from t) (f $ from t)) branches
+    let matches = map (\ (cond, t) -> Match @p @b cond (f $ from t)) branches
 
     pure $ ECase (Scrut s scrutVar) matches
 
@@ -126,10 +125,21 @@ matchM s f = do
     let branches = map ($ ESym scrutVar) $ partition @p @a
     matches <- mapM (\ (cond, adt) -> do
         body <- f (from adt)
-        pure $ Match @p @b cond (from adt) body) branches
+        pure $ Match @p @b cond body) branches
 
     pure $ ECase (Scrut s scrutVar) matches
 
+match2 :: forall p a b . (Partition p a, CType a, CType b)
+    => E a
+    -> (p -> E b)
+    -> Estate (E b)
+match2 s f = do
+    scrutVar <- freshId
+
+    let branches = map ($ ESym scrutVar) $ partition @p @a
+    let matches = map (\ (cond, t) -> Match @p @b cond (f t)) branches
+
+    pure $ ECase (Scrut s scrutVar) matches
 
 --
 -- * Straightforward operators

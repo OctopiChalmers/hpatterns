@@ -187,7 +187,7 @@ newCaseDef scrut@(Scrut _scrutExp sName) matches = do
             ["{ fprintf(stderr, \"No match on: `", sName, "`\\n\"); exit(1); }"]
 
         cMatch :: Match p b -> Compile String
-        cMatch (Match cond _sop body) = do
+        cMatch (Match cond body) = do
             cond' <- ce cond
             body' <- ce body
             pure $ concat

@@ -18,6 +18,23 @@ import E.Core
 import qualified GHC.Generics as GG (Generic)
 
 
+{- | Ex 0. Simplest variant, does not require SOP, but makes for more
+verbose partition instances.
+-}
+ex0 :: E Double -> Estate (E Int)
+ex0 v = match2 v $ \case
+    T1 n -> n + 1
+    T2   -> 0
+
+data T = T1 (E Int) | T2
+    deriving (GG.Generic, Generic)
+
+instance Partition T Double where
+    partition =
+        [ \ v -> (v >. 0, T1 (floorIntE v))
+        , \ v -> (v <. 0, T2)
+        ]
+
 ex1 :: E Double -> Estate (E Int)
 ex1 v = match @Sig v $ \case
     SOP    (Z (I n :* Nil)) -> n + 2
