@@ -16,11 +16,16 @@ library
     , E.Compile
     , E.CTypes
 
+    , E.Dummies
+
     , E.Ex0
     , E.Ex1
     , E.Ex2
     , E.Ex3
     , E.Ex4
+    , E.Ex5
+
+    , E.TH
 
     -- , Xp.Core
     -- , Xp.Compile
