@@ -19,15 +19,16 @@ ex0 :: E Double -> Estate (E Int)
 ex0 v = match' v $ \case
     T1 n             -> n + 1
     T2               -> 0
-    T3 (frac, whole) -> floorIntE (20 * frac) + whole
+    T3 (frac, whole) -> floorIntE (2 * frac * frac) + whole
+    -- this causes redundancy in the C ^^^^   ^^^^
 
 data T
     = T1 (E Int)
     | T2
     | T3 (E Double, E Int)
     deriving (GG.Generic, Generic)
-    -- Deriving not actually needed here, it's for the constraint
-    -- on Partition, but the generics are not used with this method.
+    -- Generic is not actually needed for this method, but the Partition
+    -- class has a constraint on it.
 
 instance Partition T Double where
     partition =
