@@ -34,12 +34,12 @@ pattern Small_ x = SOP (S (Z (I x :* Nil)))
 {-# COMPLETE Large_, Small_ #-}
 
 
-ex3 :: E Double -> Estate (E Int)
-ex3 v = matchM @Sig v $ \case
-    Neg_   -> pure 0
-    Pos_ n -> matchM @Size n $ \case
-        Large_ x y -> pure (x + y)
-        Small_ x   -> pure (x + n)
+-- ex3 :: E Double -> Estate (E Int)
+-- ex3 v = matchM @Sig v $ \case
+--     Neg_   -> pure 0
+--     Pos_ n -> matchM @Size n $ \case
+--         Large_ x y -> pure (x + y)
+--         Small_ x   -> pure (x + n)
 
 data Size
     = Large (E Int) (E Int)

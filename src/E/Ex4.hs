@@ -15,9 +15,9 @@ import qualified GHC.Generics as GG (Generic)
 
 
 ex4 :: E Double -> Estate (E Int)
-ex4 v = matchM' v $ \case
+ex4 v = matchM v $ \case
     Neg   -> pure 0
-    Pos n -> matchM' n $ \case
+    Pos n -> matchM n $ \case
         Large x y -> pure (x + y)
         Small x   -> pure (x + n)
 

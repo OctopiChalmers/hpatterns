@@ -14,14 +14,14 @@ import E.Core
 import qualified GHC.Generics as GG (Generic)
 
 
-ex2 :: E Double -> Estate (E Int)
-ex2 v = matchM @Sig v $ \case
-    SOP (S (S _          )) -> error "impossible by construction"
-    SOP (S (Z Nil        )) -> pure 0
-    SOP    (Z (I n :* Nil)) -> matchM @Size n $ \case
-        SOP    (Z (I x :* I y :* Nil)) -> pure $ x + y
-        SOP (S (Z (I x :* Nil)      )) -> pure $ x + n
-        SOP (S (S _                 )) -> error "impossible by construction"
+-- ex2 :: E Double -> Estate (E Int)
+-- ex2 v = matchM @Sig v $ \case
+--     SOP (S (S _          )) -> error "impossible by construction"
+--     SOP (S (Z Nil        )) -> pure 0
+--     SOP    (Z (I n :* Nil)) -> matchM @Size n $ \case
+--         SOP    (Z (I x :* I y :* Nil)) -> pure $ x + y
+--         SOP (S (Z (I x :* Nil)      )) -> pure $ x + n
+--         SOP (S (S _                 )) -> error "impossible by construction"
 
 data Size
     = Large (E Int) (E Int)
