@@ -1,7 +1,11 @@
 {-# LANGUAGE LambdaCase            #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE PatternSynonyms       #-}
+{-# LANGUAGE ViewPatterns          #-}
 
 module E.Ex5 where
+
+import Data.Functor ((<&>))
 
 import E.Core
 
@@ -12,10 +16,13 @@ data A
 
 instance Partition A Int where
     partition =
-        [ \ v -> (v >. 0, A1 (ETag "_tag_A1_0" $ v + 5))
-        , \ v -> (v <. 0, A2 (ETag "_tag_A2_0" $ v <. -3)
-                             (ETag "_tag_A2_1" $ v - 5))
+        [ \ v -> (v >. 0, newFieldTag <&> \ t -> A1 (t $ v + 5))
+        , \ v -> (v <. 0, do
+            t1 <- newFieldTag
+            t2 <- newFieldTag
+            pure $ A2 (t1 $ v <. -3) (t2 $ v - 5))
         ]
+
 
 ex5 :: E Int -> Estate (E Bool)
 ex5 x = matchM x $ \case

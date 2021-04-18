@@ -11,6 +11,7 @@
 {-# LANGUAGE PolyKinds               #-}
 {-# LANGUAGE ScopedTypeVariables     #-}
 {-# LANGUAGE StandaloneDeriving      #-}
+{-# LANGUAGE TupleSections           #-}
 {-# LANGUAGE TypeApplications        #-}
 {-# LANGUAGE TypeFamilies            #-}
 {-# LANGUAGE TypeOperators           #-}
@@ -31,13 +32,13 @@ import qualified Control.Monad.State.Strict as St
 
 data E a where
     -- Constructors for pattern matching.
-    ESym :: String -> E a
+    ESym :: ScrutId -> E a
     ECase :: (Partition p a, CType a, CType b)
         => Scrut a
         -> [Match p b]
         -> E b
 
-    ETag :: String -> E a -> E a
+    EField :: ArgId -> E a -> E a
 
     -- Straightforward operators.
 
@@ -60,7 +61,7 @@ data E a where
     ECFloorInt    :: E Double -> E Int
     ECFloorDouble :: E Double -> E Double
 
-data Scrut a = Scrut (E a) String
+data Scrut a = Scrut (E a) ScrutId
 
 data Match p b where
     Match :: forall p b . CType b
@@ -84,28 +85,47 @@ instance (Fractional a) => Fractional (E a) where
 
 -- ** Auxiliary stuff
 
-type Estate = St.State Int
+type Estate = St.State Env
+
+newtype ScrutId = ScrutId Int deriving (Eq, Ord, Show)
+newtype FieldId = FieldId Int deriving (Eq, Ord, Show)
+
+{- | An 'ArgId' is an identifier for a single bound field of a deconstructed
+value in a pattern match.
+-}
+data ArgId = ArgId ScrutId FieldId
+    deriving (Eq, Ord, Show)
+
+data Env = Env
+    { envScrutCount :: Int
+    , envFieldCount :: Int
+    }
 
 runEstate :: Estate a -> a
-runEstate x = St.evalState x 0
+runEstate x = St.evalState x initEnv
+  where
+    initEnv :: Env
+    initEnv = Env 0 0
 
 -- | Return a unique identifier and increment the counter in state.
-freshId :: Estate String
-freshId = do
-    newId <- ("_coreId" ++) . show <$> St.get
-    St.modify'(+ 1)
-    pure newId
+newScrutId :: Estate ScrutId
+newScrutId = do
+    St.modify' (\ st -> st { envScrutCount = envScrutCount st + 1 })
+    ScrutId . envScrutCount <$> St.get
+
+newFieldTag :: Estate (E a -> E a)
+newFieldTag = do
+    St.modify' (\ st -> st { envFieldCount = envFieldCount st + 1 })
+    scrutId <- ScrutId . envScrutCount <$> St.get
+    fieldId <- FieldId . envFieldCount <$> St.get
+    pure $ EField (ArgId scrutId fieldId)
 
 --
 -- * Pattern matching
 --
 
 class Partition p a where
-    partition :: [E a -> (E Bool, p)]
-
-{-# WARNING matchM
-    "Nested matching does not compile correctly (scoping issue)."
-#-}
+    partition :: [E a -> (E Bool, Estate p)]
 
 {- | Partitioning a scrutinee and apply a pattern matching function on the
 partition type.
@@ -117,14 +137,18 @@ match :: forall p a b . (Partition p a, CType a, CType b)
 match s f = do
     -- Generate a variable name to differentiate this scrutinee from others
     -- during compilation.
-    scrutVar <- freshId
+    scrutVar <- newScrutId
     -- Apply the partitioning on symbolic variables referring to the scrutinee.
     -- When the user pattern matches and uses one of these variables, they
     -- will have the transformation applied by the Partition instance.
     let branches = map ($ ESym scrutVar) $ partition @p @a
+    taggedBranches <- mapM computeTag branches
 
-    pure $ ECase (Scrut s scrutVar) (map mkMatch branches)
+    pure $ ECase (Scrut s scrutVar) $ map mkMatch taggedBranches
   where
+    computeTag :: (E Bool, Estate p) -> Estate (E Bool, p)
+    computeTag (cond, p) = (cond, ) <$> p
+
     mkMatch :: (E Bool, p) -> Match p b
     mkMatch (cond, p) = Match @p @b cond (f p)
 
@@ -136,10 +160,14 @@ matchM :: forall p a b . (Partition p a, CType a, CType b)
     -> (p -> Estate (E b))
     -> Estate (E b)
 matchM s f = do
-    scrutVar <- freshId
-    let branches = map ($ ESym scrutVar) $ partition @p @a
-    ECase (Scrut s scrutVar) <$> mapM mkMatch branches
+    scrutCount <- newScrutId
+    let branches = map ($ ESym scrutCount) $ partition @p @a
+    taggedBranches <- mapM computeTag branches
+    ECase (Scrut s scrutCount) <$> mapM mkMatch taggedBranches
   where
+    computeTag :: (E Bool, Estate p) -> Estate (E Bool, p)
+    computeTag (cond, p) = (cond, ) <$> p
+
     mkMatch :: (E Bool, p) -> Estate (Match p b)
     mkMatch (cond, p) = Match @p @b cond <$> f p
 

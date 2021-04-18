@@ -3,19 +3,22 @@
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
-{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeApplications           #-}
 
 module E.Compile where
 
 import Control.Arrow ((<<<))
-
-import Lens.Micro ((<&>), (^.), _head)
+import Control.Monad (when)
+import Data.Functor ((<&>))
+import Data.List (sortOn)
+import Data.Proxy (Proxy (..))
+import Lens.Micro ((^.), _head)
 import Lens.Micro.Mtl (assign, modifying, use)
 
-import E.Core (Estate, Match (..), Scrut (..), E (..), runEstate)
+import E.Core
 import E.CTypes (CType (..))
 
 import qualified Control.Monad.State.Strict as St
@@ -27,25 +30,40 @@ import qualified Lens.Micro.TH
 -- * Compilation utils
 --
 
-type Compile = St.State CompileState
-
 newtype Name = Name
     { unName :: String
     } deriving newtype (Show)
       deriving stock (Eq, Ord)
 
+{- | 'EC' is a wrapper for 'E' for use where homogeneity is needed and only
+the 'CType' methods are required.
+-}
 data EC = forall a . CType a => EC (E a)
+
+{- | Global variable declaration representations are parameterized by their
+C-representable type.
+-}
+data Global a = forall t . CType t => Global (Proxy t) a
+
+type Compile = St.State CompileState
 
 -- | State during compilation.
 data CompileState = CompileState
     { _csCounter :: Int
-    -- ^ Seed for generating unique variables.
-    , _csDefs    :: [String]
-    -- ^ Function definitions added as necssary.
-    , _csGlobals :: [String]
-    -- ^ Global variable declarations.
-    , _csCtxts :: [M.Map String EC]
-    -- ^ Contexts for case-of's, modelled as a stack.
+    -- ^ Counter for generating unique names for stuff.
+    , _csDefs :: [String]
+    -- ^ Function definitions as whole strings. Accumulated during compilation.
+    , _csGlobalScrutIds :: [Global ScrutId]
+    -- ^ Global variables for scrutinees.
+    , _csGlobalArgIds :: [Global ArgId]
+    -- ^ Global variables for constructor fields.
+    , _csCtxts :: [M.Map ArgId EC]
+    -- ^ Contexts for case-of's/pattern matches, modelled as a stack. Each field
+    -- of a constructor is represented by a unique ID, along with the ID of the
+    -- scrutinee it originated from. A new map is used for each new pattern
+    -- match construct. The mapping to a (wrapped) 'E' allows us to bind
+    -- the expressions of constructor fields to variables, so they can be
+    -- reused internally.
     }
 $(Lens.Micro.TH.makeLenses ''CompileState)
 
@@ -58,35 +76,63 @@ freshCid = do
     modifying csCounter (+ 1)
     pure $ Name newId
 
--- * Compilation
+showArgId :: ArgId -> String
+showArgId (ArgId scrutId (FieldId fid)) =
+    concat [showScrutId scrutId, "_field", show fid]
 
+showScrutId :: ScrutId -> String
+showScrutId (ScrutId sid) = "_scrut" ++ show sid
+
+showGlobalScrutId :: Global ScrutId -> String
+showGlobalScrutId (Global (_ :: Proxy t) x) =
+    concat [ctype @t, " ", showScrutId x, ";"]
+
+showGlobalArgId :: Global ArgId -> String
+showGlobalArgId (Global (_ :: Proxy t) x) =
+    concat [ctype @t, " ", showArgId x, ";"]
+
+--
+-- * Compilation
+--
+
+-- | Compile and write the generated C code to file.
 writeProg :: CType a => FilePath -> Estate (E a) -> IO ()
 writeProg fp = writeFile fp . compile . runEstate
 
+-- | Compile and output the generated C code to stdout.
 printProg :: CType a => Estate (E a) -> IO ()
 printProg = putStrLn . compile . runEstate
 
+{- | Main entry point for compilation. Generate code for an @'E' a@ expression
+where @a@ is a type that can be represented in C (indicated by the 'CType')
+constraint.
+-}
 compile :: forall a. CType a => E a -> String
 compile expr =
     let (code, st) = runCompile (ce expr)
     in mconcat
-        [ "\n// Code generated from Xp program \n\n"
+        [ "\n// Code generated from E program \n\n"
 
         -- #include lines
         , concatMap ((++ "\n") . includeWrap)
             ["stdbool.h", "stdlib.h", "stdio.h", "math.h"], "\n"
 
-        -- -- Define structs
-        -- , "// Structs representing product types\n"
-        -- , unlines (M.elems $ st ^. csStructs), "\n"
+        -- Insert global variable declarations.
+        , "// Global variables for scrutinees.\n"
+        , unlines . map showGlobalScrutId . sortOn (\ (Global _ x) -> x)
+            $ st ^. csGlobalScrutIds
+        , "\n"
+        , "// Global variables for constructor fields.\n"
+        , unlines . map showGlobalArgId . sortOn (\ (Global _ x) -> x)
+            $ st ^. csGlobalArgIds
+        , "\n"
 
-        -- Declare global variables
-        , "// Variables correpsonding to scrutinees in case expressions\n"
-        , concat (st ^. csGlobals), "\n"
-
-        -- The definitions are added in the wrong order (for the C code),
+        -- Function definitions are added in the wrong order (for the C code),
         -- so we reverse the list of definitions before printing them.
         , unlines . reverse $ (st ^. csDefs)
+
+        -- Create the main() function entry point.
+        -- NOTE: Doesn't handle any input currently.
         , mainWrap code
         ]
   where
@@ -97,7 +143,8 @@ compile expr =
         initCompileState = CompileState
             { _csCounter = 0
             , _csDefs = []
-            , _csGlobals = []
+            , _csGlobalScrutIds = []
+            , _csGlobalArgIds = []
             , _csCtxts = []
             }
 
@@ -113,24 +160,35 @@ compile expr =
         , "}\n"
         ]
 
+-- | Add a new empty map to the constructor field context stack.
 pushCtxt :: Compile ()
 pushCtxt = modifying csCtxts (M.empty :)
 
-popCtxt :: Compile (M.Map String EC)
+-- | Return the top constructor field context and decrease the stack.
+popCtxt :: Compile (M.Map ArgId EC)
 popCtxt = use csCtxts >>= \case
     []     -> error "popEnv: Empty stack"
     x : xs -> assign csCtxts xs >> pure x
 
-ce :: forall a . CType a => E a -> Compile String
+-- | Serialize an 'E' expression and affect the compilation state as necessary.
+ce :: forall rt . CType rt => E rt -> Compile String  -- "rt" for "return type"
 ce expr = case expr of
     EVal v -> pure $ cval v
     EVar s -> pure s
 
-    ETag s e -> do
-        modifying (csCtxts <<< _head) (M.insert s (EC e))
-        pure s
+    EField argId e -> do
+        -- Add the ArgId of the expression we encountered to the current
+        -- context, so that the outer 'ECase' construct knows to bind it.
+        modifying (csCtxts <<< _head) (M.insert argId (EC e))
 
-    ESym s -> pure s
+        -- And if it's the first time we made use of this field, we need to
+        -- add add a global variable declaration for it.
+        isNew <- not <$> globalArgIdExists argId
+        when isNew (newGlobalArgId @rt $ argId)
+
+        pure $ showArgId argId
+
+    ESym s -> pure $ showScrutId s
 
     ECase scrut@(Scrut e _s) matches -> do
         fName <- newCaseDef scrut matches
@@ -172,20 +230,22 @@ newCaseDef :: forall p a b . (CType a, CType b)
     => Scrut a
     -> [Match p b]
     -> Compile Name
-newCaseDef scrut@(Scrut _scrutExp sName) matches = do
+newCaseDef (Scrut _scrutExp scrutId) matches = do
     pushCtxt
 
-    newGlobalVar scrut
+    newGlobalScrutId @a scrutId
     fName <- freshCid
     ifs <- cMatches matches
 
     -- At this point, the top of the csCtxts stack should contain the variables
     -- and expressions we need to bind.
+    -- TODO: Creates redundant assignments when using nested cases where
+    -- the inner case refers to a bound variable from the outer case.
     bindings <- mapM cScrutBinding . M.assocs =<< popCtxt
 
     let def = concat
             [ ctype @b, " ", unName fName, "(", ctype @a, " ", argName, ") {\n"
-            , "    ", sName, " = ", argName, ";\n"
+            , "    ", showScrutId scrutId, " = ", argName, ";\n"
             , "    ", ctype @b, " ", resName, ";\n"
             , concatMap (\ x -> "    " ++ x ++ "\n") bindings
             , concatMap (\ x -> "    " ++ x ++ "\n") ifs
@@ -203,10 +263,10 @@ newCaseDef scrut@(Scrut _scrutExp sName) matches = do
     argName :: String
     argName = "arg"
 
-    cScrutBinding :: (String, EC) -> Compile String
-    cScrutBinding (s, EC (e :: E t)) = do
+    cScrutBinding :: (ArgId, EC) -> Compile String
+    cScrutBinding (argId, EC (e :: E t)) = do
         e' <- ce e
-        pure $ concat [ctype @t, " ", s, " = ", e', ";"]
+        pure $ concat [showArgId argId, " = ", e', ";"]
 
     cMatches :: [Match p b] -> Compile [String]
     cMatches xs = do
@@ -215,7 +275,8 @@ newCaseDef scrut@(Scrut _scrutExp sName) matches = do
       where
         nonMatch :: String
         nonMatch = concat
-            ["{ fprintf(stderr, \"No match on: `", sName, "`\\n\"); exit(1); }"]
+            [ "{ fprintf(stderr, \"No match on: `", showScrutId scrutId
+            , "`\\n\"); exit(1); }"]
 
         cMatch :: Match p b -> Compile String
         cMatch (Match cond body) = do
@@ -225,9 +286,20 @@ newCaseDef scrut@(Scrut _scrutExp sName) matches = do
                 ["if (", cond', ") { ", resName, " = ", body', "; } else "]
 
 {- | Add a global variable to the compilation state, for holding the value
+of a constructor field.
+-}
+newGlobalArgId :: forall a . CType a => ArgId -> Compile ()
+newGlobalArgId aid = modifying csGlobalArgIds (Global (Proxy @a) aid :)
+
+{- | Add a global variable to the compilation state, for holding the value
 of a scrutinee.
 -}
-newGlobalVar :: forall a . CType a => Scrut a -> Compile ()
-newGlobalVar (Scrut _ sName) =
-    let def = concat [ctype @a, " ", sName, ";\n"]
-    in modifying csGlobals (def :)
+newGlobalScrutId :: forall a . CType a => ScrutId -> Compile ()
+newGlobalScrutId sid = modifying csGlobalScrutIds (Global (Proxy @a) sid :)
+
+{- | Check if an ArgId is already a declared global varaible, regardless
+of variable type.
+-}
+globalArgIdExists :: ArgId -> Compile Bool
+globalArgIdExists aid =
+    (aid `elem`) . map (\ (Global _ a) -> a) <$> use csGlobalArgIds
