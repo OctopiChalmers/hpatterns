@@ -1,3 +1,4 @@
+
 {-# LANGUAGE AllowAmbiguousTypes     #-}
 {-# LANGUAGE DataKinds               #-}
 {-# LANGUAGE DeriveGeneric           #-}
@@ -17,41 +18,12 @@
 
 module E.Core where
 
-import Data.Bifunctor
-import Data.SOP
-import Data.Kind
-import Generics.SOP
 
-import E.CTypes
+import E.CTypes (CType)
 
 import qualified Control.Monad.State.Strict as St
 
 
-type TaggedADT a = SOP Tag (Code a)
-
-data Tag a = Tag String a
-
-tag :: (All SListI xss) => String -> SOP I xss -> SOP Tag xss
-tag s sop = hmap (\ (I a) -> Tag s a) sop
-
-pm :: forall p a b . (Partition p a, CType a, CType b)
-    => E a
-    -> (SOP Tag (Code p) -> E b)
-    -> Estate (E b)
-pm e f = do
-    -- Generate a variable name to differentiate this scrutinee from others
-    -- during compilation.
-    scrutVar <- freshId
-    -- Apply the partitioning on symbolic variables referring to the scrutinee.
-    -- When the user pattern matches and uses one of these variables, they
-    -- will have the transformation applied by the Partition instance.
-    let branches = map ($ ESym scrutVar) $ partition @p @a
-    let x = map (second (tag (scrutVar ++ "_TAG") . from)) branches
-
-    pure $ ECase @p @a (Scrut e scrutVar) (map mkMatch x)
-  where
-    mkMatch :: (E Bool, SOP Tag (Code p)) -> Match p b
-    mkMatch (cond, p) = Match @p @b cond p (f p)
 
 --
 -- * Main data type
@@ -65,7 +37,7 @@ data E a where
         -> [Match p b]
         -> E b
 
-    ERef :: String -> Int -> E a -> E a
+    ETag :: String -> E a -> E a
 
     -- Straightforward operators.
 
@@ -93,7 +65,6 @@ data Scrut a = Scrut (E a) String
 data Match p b where
     Match :: forall p b . CType b
         => E Bool
-        -> TaggedADT p
         -> E b
         -> Match p b
 
@@ -121,7 +92,7 @@ runEstate x = St.evalState x 0
 -- | Return a unique identifier and increment the counter in state.
 freshId :: Estate String
 freshId = do
-    newId <- ("coreId" ++) . show <$> St.get
+    newId <- ("_coreId" ++) . show <$> St.get
     St.modify'(+ 1)
     pure newId
 
@@ -129,10 +100,12 @@ freshId = do
 -- * Pattern matching
 --
 
-class Generic p => Partition p a where
+class Partition p a where
     partition :: [E a -> (E Bool, p)]
 
-data TaggedE = forall a . (CType a) => TaggedE String (E a)
+{-# WARNING matchM
+    "Nested matching does not compile correctly (scoping issue)."
+#-}
 
 {- | Partitioning a scrutinee and apply a pattern matching function on the
 partition type.
@@ -155,7 +128,7 @@ match s f = do
     mkMatch :: (E Bool, p) -> Match p b
     mkMatch (cond, p) = Match @p @b cond (f p)
 
-{- | Same as match' but the pattern matching function is be monadic (used
+{- | Same as match but the pattern matching function is be monadic (used
 for nested matches).
 -}
 matchM :: forall p a b . (Partition p a, CType a, CType b)

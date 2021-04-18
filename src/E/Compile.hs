@@ -3,19 +3,20 @@
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
+{-# LANGUAGE RankNTypes                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeApplications           #-}
 
 module E.Compile where
 
-import Debug.Trace
+import Control.Arrow ((<<<))
 
-import Lens.Micro
-import Lens.Micro.Mtl
+import Lens.Micro ((<&>), (^.), _head)
+import Lens.Micro.Mtl (assign, modifying, use)
 
-import E.Core
-import E.CTypes
+import E.Core (Estate, Match (..), Scrut (..), E (..), runEstate)
+import E.CTypes (CType (..))
 
 import qualified Control.Monad.State.Strict as St
 import qualified Data.Map.Strict as M
@@ -33,6 +34,8 @@ newtype Name = Name
     } deriving newtype (Show)
       deriving stock (Eq, Ord)
 
+data EC = forall a . CType a => EC (E a)
+
 -- | State during compilation.
 data CompileState = CompileState
     { _csCounter :: Int
@@ -41,8 +44,8 @@ data CompileState = CompileState
     -- ^ Function definitions added as necssary.
     , _csGlobals :: [String]
     -- ^ Global variable declarations.
-    , _csStructs :: M.Map Name String
-    -- ^ Definitions for structs. Maps name of struct (its type) to definition.
+    , _csCtxts :: [M.Map String EC]
+    -- ^ Contexts for case-of's, modelled as a stack.
     }
 $(Lens.Micro.TH.makeLenses ''CompileState)
 
@@ -95,7 +98,7 @@ compile expr =
             { _csCounter = 0
             , _csDefs = []
             , _csGlobals = []
-            , _csStructs = M.empty
+            , _csCtxts = []
             }
 
     includeWrap :: String -> String
@@ -110,10 +113,22 @@ compile expr =
         , "}\n"
         ]
 
+pushCtxt :: Compile ()
+pushCtxt = modifying csCtxts (M.empty :)
+
+popCtxt :: Compile (M.Map String EC)
+popCtxt = use csCtxts >>= \case
+    []     -> error "popEnv: Empty stack"
+    x : xs -> assign csCtxts xs >> pure x
+
 ce :: forall a . CType a => E a -> Compile String
 ce expr = case expr of
     EVal v -> pure $ cval v
     EVar s -> pure s
+
+    ETag s e -> do
+        modifying (csCtxts <<< _head) (M.insert s (EC e))
+        pure s
 
     ESym s -> pure s
 
@@ -121,11 +136,6 @@ ce expr = case expr of
         fName <- newCaseDef scrut matches
         scrutStr <- ce e
         pure $ concat [unName fName, "(", scrutStr, ")"]
-
-    ERef s idx e -> do
-        e' <- ce e
-        pure $ concat
-            ["(REF TO: `", s, "` (", show idx, "), expression: ", e', ")"]
 
     EAdd e1 e2 -> binOp e1 e2 "+"
     EMul e1 e2 -> binOp e1 e2 "*"
@@ -163,19 +173,27 @@ newCaseDef :: forall p a b . (CType a, CType b)
     -> [Match p b]
     -> Compile Name
 newCaseDef scrut@(Scrut _scrutExp sName) matches = do
+    pushCtxt
+
     newGlobalVar scrut
     fName <- freshCid
     ifs <- cMatches matches
+
+    -- At this point, the top of the csCtxts stack should contain the variables
+    -- and expressions we need to bind.
+    bindings <- mapM cScrutBinding . M.assocs =<< popCtxt
 
     let def = concat
             [ ctype @b, " ", unName fName, "(", ctype @a, " ", argName, ") {\n"
             , "    ", sName, " = ", argName, ";\n"
             , "    ", ctype @b, " ", resName, ";\n"
+            , concatMap (\ x -> "    " ++ x ++ "\n") bindings
             , concatMap (\ x -> "    " ++ x ++ "\n") ifs
             , "    return ", resName, ";\n"
             , "}\n"
             ]
     modifying csDefs (def :)
+
     pure fName
 
   where
@@ -184,6 +202,11 @@ newCaseDef scrut@(Scrut _scrutExp sName) matches = do
 
     argName :: String
     argName = "arg"
+
+    cScrutBinding :: (String, EC) -> Compile String
+    cScrutBinding (s, EC (e :: E t)) = do
+        e' <- ce e
+        pure $ concat [ctype @t, " ", s, " = ", e', ";"]
 
     cMatches :: [Match p b] -> Compile [String]
     cMatches xs = do
@@ -195,7 +218,7 @@ newCaseDef scrut@(Scrut _scrutExp sName) matches = do
             ["{ fprintf(stderr, \"No match on: `", sName, "`\\n\"); exit(1); }"]
 
         cMatch :: Match p b -> Compile String
-        cMatch (Match cond _ body) = do
+        cMatch (Match cond body) = do
             cond' <- ce cond
             body' <- ce body
             pure $ concat
