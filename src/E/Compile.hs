@@ -9,6 +9,8 @@
 
 module E.Compile where
 
+import Debug.Trace
+
 import Lens.Micro
 import Lens.Micro.Mtl
 
@@ -71,9 +73,9 @@ compile expr =
         , concatMap ((++ "\n") . includeWrap)
             ["stdbool.h", "stdlib.h", "stdio.h", "math.h"], "\n"
 
-        -- Define structs
-        , "// Structs representing product types\n"
-        , unlines (M.elems $ st ^. csStructs), "\n"
+        -- -- Define structs
+        -- , "// Structs representing product types\n"
+        -- , unlines (M.elems $ st ^. csStructs), "\n"
 
         -- Declare global variables
         , "// Variables correpsonding to scrutinees in case expressions\n"
@@ -114,10 +116,16 @@ ce expr = case expr of
     EVar s -> pure s
 
     ESym s -> pure s
-    ECase scrut@(Scrut e _sName) matches -> do
+
+    ECase scrut@(Scrut e _s) matches -> do
         fName <- newCaseDef scrut matches
         scrutStr <- ce e
         pure $ concat [unName fName, "(", scrutStr, ")"]
+
+    ERef s idx e -> do
+        e' <- ce e
+        pure $ concat
+            ["(REF TO: `", s, "` (", show idx, "), expression: ", e', ")"]
 
     EAdd e1 e2 -> binOp e1 e2 "+"
     EMul e1 e2 -> binOp e1 e2 "*"
@@ -187,7 +195,7 @@ newCaseDef scrut@(Scrut _scrutExp sName) matches = do
             ["{ fprintf(stderr, \"No match on: `", sName, "`\\n\"); exit(1); }"]
 
         cMatch :: Match p b -> Compile String
-        cMatch (Match cond body) = do
+        cMatch (Match cond _ body) = do
             cond' <- ce cond
             body' <- ce body
             pure $ concat

@@ -46,12 +46,13 @@ pm e f = do
     -- When the user pattern matches and uses one of these variables, they
     -- will have the transformation applied by the Partition instance.
     let branches = map ($ ESym scrutVar) $ partition @p @a
-    let x = map (second (tag scrutVar . from)) branches
+    let x = map (second (tag (scrutVar ++ "_TAG") . from)) branches
 
-    pure $ ECase2 @p @a (Scrut e scrutVar) (map mkTriple x)
+    pure $ ECase @p @a (Scrut e scrutVar) (map mkMatch x)
   where
-    mkTriple :: (E Bool, TaggedADT p) -> (E Bool, TaggedADT p, E b)
-    mkTriple (cond, p) = (cond, p, (f p))
+    mkMatch :: (E Bool, SOP Tag (Code p)) -> Match p b
+    mkMatch (cond, p) = Match @p @b cond p (f p)
+
 --
 -- * Main data type
 --
@@ -64,12 +65,7 @@ data E a where
         -> [Match p b]
         -> E b
 
-    ECase2 :: (Partition p a, CType a, CType b)
-        => Scrut a
-        -> [(E Bool, TaggedADT p, E b)]
-        -> E b
-
-    ERef :: String -> E a -> E a
+    ERef :: String -> Int -> E a -> E a
 
     -- Straightforward operators.
 
@@ -97,6 +93,7 @@ data Scrut a = Scrut (E a) String
 data Match p b where
     Match :: forall p b . CType b
         => E Bool
+        -> TaggedADT p
         -> E b
         -> Match p b
 
@@ -134,6 +131,8 @@ freshId = do
 
 class Generic p => Partition p a where
     partition :: [E a -> (E Bool, p)]
+
+data TaggedE = forall a . (CType a) => TaggedE String (E a)
 
 {- | Partitioning a scrutinee and apply a pattern matching function on the
 partition type.
