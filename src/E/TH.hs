@@ -1,6 +1,8 @@
 {-# LANGUAGE LambdaCase      #-}
 {-# LANGUAGE NamedFieldPuns  #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns    #-}
 
 
 module E.TH where
@@ -11,6 +13,12 @@ import qualified Data.List as List
 
 import qualified E.Dummies
 
+
+mkConstructors :: Name -> Q [Dec]
+mkConstructors victim = do
+    [d|
+
+        |]
 
 {- | Create an instance declaration of the 'E.Dummies.Dummies' class.
 The generated definition of 'E.Dummies.mkDummies' sets all arguments
