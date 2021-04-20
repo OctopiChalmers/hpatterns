@@ -13,6 +13,7 @@ import Data.Int
 import Data.Word
 
 import E.Core
+import E.TH
 
 
 {- Sensor data encoding as an unsigned 16 bit int:
@@ -37,6 +38,7 @@ type ErrorCode = E Word16
 data SensorData
     = Sensor Temp Humidity
     | Error ErrorCode
+$(mkConstructors ''SensorData)
 
 needsWatering :: E Word16 -> Estate (E Bool)
 needsWatering x = match x $ \case
@@ -95,13 +97,13 @@ errMsg name = concat
 
 -- Or, underscore-prefixed functions.
 
-_Sensor :: Temp -> Humidity -> Estate SensorData
-_Sensor a b = do
-    t1 <- newFieldTag
-    t2 <- newFieldTag
-    pure $ Sensor (t1 a) (t2 b)
+-- _Sensor :: Temp -> Humidity -> Estate SensorData
+-- _Sensor a b = do
+--     t1 <- newFieldTag
+--     t2 <- newFieldTag
+--     pure $ Sensor (t1 a) (t2 b)
 
-_Error :: ErrorCode -> Estate SensorData
-_Error a = do
-    t1 <- newFieldTag
-    pure $ Error (t1 a)
+-- _Error :: ErrorCode -> Estate SensorData
+-- _Error a = do
+--     t1 <- newFieldTag
+--     pure $ Error (t1 a)

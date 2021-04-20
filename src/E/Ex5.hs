@@ -13,7 +13,6 @@ import E.TH
 data A
     = A1 (E Int)
     | A2 (E Bool) (E Int)
-$(mkConstructors ''A)
 
 instance Partition A Int where
     partition =
