@@ -38,7 +38,9 @@ type ErrorCode = E Word16
 data SensorData
     = Sensor Temp Humidity
     | Error ErrorCode
-$(mkConstructors ''SensorData)
+---------------------------------------------------------------------------------------------- $(mkConstructors ''SensorData)
+
+-- type Estate a = State Env a
 
 needsWatering :: E Word16 -> Estate (E Bool)
 needsWatering x = match x $ \case
@@ -48,6 +50,7 @@ needsWatering x = match x $ \case
 --
 
 instance Partition SensorData Word16 where
+    partition :: [E Word16 -> (E Bool, Estate SensorData)]
     partition =
         [ \ v -> ( testBitE 15 v
                  , Sensor_ (castE (v &. tempMask))
