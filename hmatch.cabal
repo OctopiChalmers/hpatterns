@@ -12,7 +12,8 @@ extra-source-files:
 
 library
   exposed-modules:
-      E.Core
+      E.Bits
+    , E.Core
     , E.Compile
     , E.CTypes
 
@@ -24,6 +25,7 @@ library
     , E.Ex3
     , E.Ex4
     , E.Ex5
+    , E.Ex6
 
     , E.TH
 

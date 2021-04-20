@@ -84,7 +84,7 @@ showScrutId :: ScrutId -> String
 showScrutId (ScrutId sid) = "_scrut" ++ show sid
 
 showGlobalScrutId :: Global ScrutId -> String
-showGlobalScrutId (Global (_ :: Proxy t) x) =
+showGlobalScrutId (Global (Proxy :: Proxy t) x) =
     concat [ctype @t, " ", showScrutId x, ";"]
 
 showGlobalArgId :: Global ArgId -> String
@@ -115,7 +115,7 @@ compile expr =
 
         -- #include lines
         , concatMap ((++ "\n") . includeWrap)
-            ["stdbool.h", "stdlib.h", "stdio.h", "math.h"], "\n"
+            ["stdbool.h", "stdlib.h", "stdio.h", "stdint.h", "math.h"], "\n"
 
         -- Insert global variable declarations.
         , "// Global variables for scrutinees.\n"
@@ -211,6 +211,16 @@ ce expr = case expr of
 
     ECFloorInt d    -> ce d <&> \ d' -> concat ["((int) floor(", d', "))"]
     ECFloorDouble d -> ce d <&> \ d' -> concat ["(floor(", d', "))"]
+
+    -- Unsafe bit twiddling below, subject to change
+
+    ECast e (Proxy :: Proxy t) -> do
+        e' <- ce e
+        pure $ concat ["((", ctype @t, ") ", e', ")"]
+
+    EShiftL e n -> binOp e n "<<"
+    EShiftR e n -> binOp e n ">>"
+    EBitAnd e1 e2 -> binOp e1 e2 "&"
 
   where
     binOp :: (CType a1, CType a2)

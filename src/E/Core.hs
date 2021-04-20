@@ -1,4 +1,3 @@
-
 {-# LANGUAGE AllowAmbiguousTypes     #-}
 {-# LANGUAGE DataKinds               #-}
 {-# LANGUAGE DeriveGeneric           #-}
@@ -19,6 +18,8 @@
 
 module E.Core where
 
+import Data.Bits
+import Data.Proxy
 
 import E.CTypes (CType)
 
@@ -60,6 +61,16 @@ data E a where
 
     ECFloorInt    :: E Double -> E Int
     ECFloorDouble :: E Double -> E Double
+
+    -- UNSAFE bit twiddling stuff; this stuff should be handled separately
+    -- in the future maybe. hacky thing to test stuff atm
+
+    ECast   :: (CType a, CType b) => E a -> Proxy b -> E b  -- yikes
+
+    -- EBit    :: (Bits a) => E Int -> E a
+    EShiftL :: (Bits a) => E a -> E Int -> E a
+    EShiftR :: (Bits a) => E a -> E Int -> E a
+    EBitAnd :: (Bits a) => E a -> E a -> E a
 
 data Scrut a = Scrut (E a) ScrutId
 
@@ -229,3 +240,29 @@ floorIntE = ECFloorInt
 
 fracPartE :: E Double -> E Double
 fracPartE d = d - floorDoubleE d
+
+-- * !!VERY UNSAFE!! Bitwise operations (hacky stuff to test some things)
+
+testBitE :: (Bits a, Num a, CType a) => E Int -> E a -> E Bool
+testBitE n v = bitE n &. v ==. 0
+
+zeroBitsE :: (Bits a, Num a) => E a
+zeroBitsE = 0
+
+bitE :: (Bits a, Num a) => E Int -> E a
+bitE n = 1 <<. n
+
+infix 4 >>.
+(>>.) :: Bits a => E a -> E Int -> E a
+(>>.) = EShiftR
+
+infix 4 <<.
+(<<.) :: Bits a => E a -> E Int -> E a
+(<<.) = EShiftL
+
+infix 5 &.
+(&.) :: Bits a => E a -> E a -> E a
+(&.) = EBitAnd
+
+castE :: forall a b . (CType a, CType b) => E a -> E b
+castE e = ECast e (Proxy @b)
