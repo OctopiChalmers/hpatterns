@@ -25,8 +25,8 @@ import qualified GHC.Generics as GG (Generic)
 data Sig = Pos (E Int) | Neg
     deriving (GG.Generic, Generic)
 
-instance Partition Sig Double where
-    partition =
-        [ \ v -> (v >. 0, Pos $ floorIntE v)
-        , \ v -> (v <. 0, Neg)
-        ]
+-- instance Partition Sig Double where
+--     partition =
+--         [ \ v -> (v >. 0, Pos $ floorIntE v)
+--         , \ v -> (v <. 0, Neg)
+--         ]

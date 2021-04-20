@@ -31,11 +31,11 @@ data T
     -- class has a constraint on it.
 
 instance Partition T Double where
-    partition =
-        [ \ v -> (v >. 100, T3 (fracPartE v) (floorIntE v))
-        , \ v -> (v >. 0,   T1 (floorIntE v))
-        , \ v -> (v <. 0,   T2)
-        ]
+    partition = undefined
+        -- [ \ v -> (v >. 100, T3 (fracPartE v) (floorIntE v))
+        -- , \ v -> (v >. 0,   T1 (floorIntE v))
+        -- , \ v -> (v <. 0,   T2)
+        -- ]
 
 
 

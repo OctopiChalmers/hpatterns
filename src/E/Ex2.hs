@@ -28,17 +28,17 @@ data Size
     | Small (E Int)
     deriving (Generic, GG.Generic)
 
-instance Partition Size Int where
-    partition =
-        [ \ v -> (v >. 100, Large v v)
-        , \ v -> (valE True, Small (v + 1))
-        ]
+-- instance Partition Size Int where
+--     partition =
+--         [ \ v -> (v >. 100, Large v v)
+--         , \ v -> (valE True, Small (v + 1))
+--         ]
 
 data Sig = Pos (E Int) | Neg
     deriving (GG.Generic, Generic)
 
-instance Partition Sig Double where
-    partition =
-        [ \ v -> (v >. 0, Pos $ floorIntE v)
-        , \ v -> (v <. 0, Neg)
-        ]
+-- instance Partition Sig Double where
+--     partition =
+--         [ \ v -> (v >. 0, Pos $ floorIntE v)
+--         , \ v -> (v <. 0, Neg)
+--         ]
