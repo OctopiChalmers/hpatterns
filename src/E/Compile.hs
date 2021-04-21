@@ -4,11 +4,14 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase                 #-}
 {-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE StandaloneDeriving         #-}
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeApplications           #-}
 
-module E.Compile where
+module E.Compile
+    ( compile
+    , printProg
+    , writeProg
+    ) where
 
 import Control.Arrow ((<<<))
 import Control.Monad (when)
@@ -49,21 +52,24 @@ type Compile = St.State CompileState
 
 -- | State during compilation.
 data CompileState = CompileState
-    { _csCounter :: Int
-    -- ^ Counter for generating unique names for stuff.
+    { -- | Counter for generating unique names for stuff.
+      _csCounter :: Int
+      -- | Function definitions as whole strings. These are accumulated
+      -- during compilation.
     , _csDefs :: [String]
-    -- ^ Function definitions as whole strings. Accumulated during compilation.
+      -- | Global variables for scrutinees.
     , _csGlobalScrutIds :: [Global ScrutId]
-    -- ^ Global variables for scrutinees.
+      -- | Global variables for constructor fields. It's a bit silly having
+      -- separate lists for different global things; can probably be unified
+      -- into a single field (TODO).
     , _csGlobalArgIds :: [Global ArgId]
-    -- ^ Global variables for constructor fields.
+      -- | Contexts for case-of's/pattern matches, modelled as a stack. Each
+      -- field of a constructor is represented by a unique ID, along with the
+      -- ID of the scrutinee it originated from. A new map is used for each
+      -- new pattern match construct. The mapping to a (wrapped) 'E' allows us
+      -- to bind the expressions of constructor fields to variables, so they
+      -- can be reused internally.
     , _csCtxts :: [M.Map ArgId EC]
-    -- ^ Contexts for case-of's/pattern matches, modelled as a stack. Each field
-    -- of a constructor is represented by a unique ID, along with the ID of the
-    -- scrutinee it originated from. A new map is used for each new pattern
-    -- match construct. The mapping to a (wrapped) 'E' allows us to bind
-    -- the expressions of constructor fields to variables, so they can be
-    -- reused internally.
     }
 $(Lens.Micro.TH.makeLenses ''CompileState)
 
@@ -249,7 +255,7 @@ newCaseDef (Scrut _scrutExp scrutId) matches = do
 
     -- At this point, the top of the csCtxts stack should contain the variables
     -- and expressions we need to bind.
-    -- TODO: Creates redundant assignments when using nested cases where
+    -- TODO: Still creates redundant assignments when using nested cases where
     -- the inner case refers to a bound variable from the outer case.
     bindings <- mapM cScrutBinding . M.assocs =<< popCtxt
 

@@ -15,6 +15,7 @@ library
       E.Core
     , E.Compile
     , E.CTypes
+    , E.Lang
     , E.TH
 
     , E.Examples.Watering

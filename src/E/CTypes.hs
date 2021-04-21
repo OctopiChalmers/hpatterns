@@ -1,5 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 
+-- | Types with supported representation in C.
+
 module E.CTypes where
 
 import Data.Char (toLower)
