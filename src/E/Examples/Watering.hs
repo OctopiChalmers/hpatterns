@@ -41,9 +41,9 @@ If control bit C is not set:
 
 -}
 
-type Temp      = E Word8
-type Humidity  = E Int8
-type ErrorCode = E Word16
+type Temp      = E Int8    -- Signed 8-bit integer
+type Humidity  = E Word8   -- Unsigned 8-bit integer
+type ErrorCode = E Word16  -- Unsigned 16-bit integer
 
 data SensorData
     = Sensor Temp Humidity
