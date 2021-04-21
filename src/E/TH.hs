@@ -83,7 +83,7 @@ mkConstructors victim = do
         genBody argNames = do
             e <- [e| E.Core.newFieldTag |]
             let tagNames = take (length argNames) (infVarNames "tag")
-            let bindings = map (flip BindS e) (map VarP tagNames)
+            let bindings = map (flip BindS e . VarP) tagNames
             -- bindings:
             -- v0 <- newFieldTag
             -- v1 <- newFieldTag

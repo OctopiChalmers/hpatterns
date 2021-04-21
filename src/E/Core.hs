@@ -1,5 +1,5 @@
-{-# LANGUAGE GADTs                   #-}
-{-# LANGUAGE ScopedTypeVariables     #-}
+{-# LANGUAGE GADTs               #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 {- | Module defining the deep embedding of the expression language 'E'. Also
 includes functions and types related to the construction of the 'E' AST, such
