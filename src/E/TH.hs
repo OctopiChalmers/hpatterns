@@ -9,9 +9,30 @@ import Language.Haskell.TH
 import qualified Data.List as List
 
 import qualified E.Core
-import qualified E.Dummies
 
 
+{- | Create smart constructors for some partition type.
+
+For example, for some type T:
+
+> data T
+>     = T1 (E Bool) (E Int)
+>     | T2 (E Int)
+
+Generates the following smart constructors:
+
+> _T1 :: E Bool -> E Int -> Estate T
+> _T1 v0 v1 = do
+>     tag0 <- newFieldTag
+>     tag1 <- newFieldTag
+>     pure $ T1 (tag0 v0) (tag1 v1)
+>
+> _T2 :: E Int -> Estate T
+> _T2 v0 = do
+>     tag0 <- newFieldTag
+>     pure $ T2 (tag0 v0)
+
+-}
 mkConstructors :: Name -> Q [Dec]
 mkConstructors victim = do
     TyConI d <- reify victim
@@ -80,40 +101,3 @@ mkConstructors victim = do
 
     err :: String -> a
     err s = error $ "Error in TH function `mkConstructors`: " ++ s
-
-{- | Create an instance declaration of the 'E.Dummies.Dummies' class.
-The generated definition of 'E.Dummies.mkDummies' sets all arguments
-of constructors to undefined (or error, really).
--}
-deriveDummies :: Name -> Q [Dec]
-deriveDummies victim = do
-    TyConI d <- reify victim
-
-    let victimDummiesQ = genDummies d
-
-    [d|
-        instance E.Dummies.Dummies $(conT victim) where
-            mkDummies = $(victimDummiesQ)
-        |]
-  where
-    genDummies :: Dec -> Q Exp
-    genDummies = \case
-        DataD _ _ _ _ constructors _ -> ListE <$> mapM genDummy constructors
-
-        _ -> err $ concat ["`", show victim, "` is not a data declaration."]
-
-    genDummy :: Con -> Q Exp
-    genDummy = \case
-        NormalC cName bTypes -> do
-            let numArgs = length bTypes
-            arg <- [| error "DUMMY ARG" |]
-            return $ List.foldl' AppE (ConE cName) (replicate numArgs arg)
-
-        _ -> err $ concat
-            [ "Invalid constructor form in declaration of data type ` "
-            , show victim, "`. Only 'normal' constructors are allowed, "
-            , "e.g. no record syntax or existential quantification."
-            ]
-
-    err :: String -> a
-    err s = error $ "Error in TH function `deriveDummies`: " ++ s

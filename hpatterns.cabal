@@ -1,6 +1,6 @@
 cabal-version:       2.4
 
-name:                hmatch
+name:                hpatterns
 version:             0.1.0.0
 license:             MIT
 license-file:        LICENSE
@@ -12,28 +12,13 @@ extra-source-files:
 
 library
   exposed-modules:
-      E.Bits
-    , E.Core
+      E.Core
     , E.Compile
     , E.CTypes
-
-    , E.Dummies
-
-    , E.Ex0
-    , E.Ex1
-    , E.Ex2
-    , E.Ex3
-    , E.Ex4
-    , E.Ex5
-    , E.Ex6
-
     , E.TH
 
-    -- , Xp.Core
-    -- , Xp.Compile
-    -- , Xp.Examples
-    -- , Xp.HalftimeExamples
-    -- , Xp.TH
+    , E.Examples.Watering
+
   build-depends:
       base ^>=4.14.1.0
     , containers
@@ -42,10 +27,7 @@ library
     , microlens-th
     , mtl
     , template-haskell
-    , sop-core
-    , generics-sop
   hs-source-dirs:      src
   default-language:    Haskell2010
-  default-extensions:
   ghc-options:
     -Wall
