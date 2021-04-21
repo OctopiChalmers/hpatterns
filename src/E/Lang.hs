@@ -24,7 +24,6 @@ module E.Lang
     , (/=.)
     , (&&.)
     , (||.)
-    , (!.)
     , notE
     , varE
     , valE
@@ -197,9 +196,6 @@ infixr 2 ||.
 (||.) :: E Bool -> E Bool -> E Bool
 (||.) = EOr
 
-(!.) :: E Bool -> E Bool
-(!.) = notE
-
 notE :: E Bool -> E Bool
 notE = ENot
 
@@ -211,12 +207,18 @@ valE = EVal
 
 -- ** Uses <math.h>
 
+-- | Round downwards, i.e. __not__ towards zero.
 floorDoubleE :: E Double -> E Double
 floorDoubleE = ECFloorDouble
 
+-- | Round downwards, i.e. __not__ towards zero.
 floorIntE :: E Double -> E Int
 floorIntE = ECFloorInt
 
+{- | Return the fractional part of a @Double@ (the part after the decimal).
+
+> fracPartE 123.789 == 0.789
+-}
 fracPartE :: E Double -> E Double
 fracPartE d = d - floorDoubleE d
 
@@ -226,23 +228,29 @@ fracPartE d = d - floorDoubleE d
 -- the capability is here to enable some examples, but these operators are
 -- basically direct translations of their corresponding C variants.
 
+-- | @testBitE n v@ returns True if the @n@th bit of the value @v@ is set.
 testBitE :: (Bits a, Num a, CType a) => E Int -> E a -> E Bool
 testBitE n v = bitE n &. v ==. 0
 
+-- | @zeroBitsE@ is a value with all bits clear. Kind of redundant.
 zeroBitsE :: (Bits a, Num a) => E a
 zeroBitsE = 0
 
+-- | @bitE n@ is a value with only the @n@th bit set, and all other bits clear.
 bitE :: (Bits a, Num a) => E Int -> E a
 bitE n = 1 <<. n
 
+-- | Bitwise right shift.
 infix 4 >>.
 (>>.) :: Bits a => E a -> E Int -> E a
 (>>.) = EShiftR
 
+-- | Bitwise left shift.
 infix 4 <<.
 (<<.) :: Bits a => E a -> E Int -> E a
 (<<.) = EShiftL
 
+-- | Bitwise AND.
 infix 5 &.
 (&.) :: Bits a => E a -> E a -> E a
 (&.) = EBitAnd
