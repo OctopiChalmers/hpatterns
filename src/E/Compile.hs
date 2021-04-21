@@ -7,6 +7,16 @@
 {-# LANGUAGE TemplateHaskell            #-}
 {-# LANGUAGE TypeApplications           #-}
 
+{- | Module containing utilities for compiling an 'E' program into C code.
+
+Note that the generated C disregards portability, and is dependent on certain
+libraries (that may or may not need to be linked):
+
+* \<stdint.h\>
+
+* \<math.h\>
+-}
+
 module E.Compile
     ( compile
     , printProg

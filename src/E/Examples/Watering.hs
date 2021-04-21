@@ -56,7 +56,7 @@ needsWatering x = match x $ \case
     Sensor temp humidity -> temp >. 30 ||. humidity <. 25
     Error _errorCode     -> valE False  -- Do something sensible here
 
-instance Partition SensorData Word16 where
+instance Partition Word16 SensorData where
     partition :: [E Word16 -> (E Bool, Estate SensorData)]
     partition =
         [ \ v -> ( testBitE 15 v

@@ -2,6 +2,8 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ViewPatterns    #-}
 
+{- | Functions for generating boilerplate-code. -}
+
 module E.TH where
 
 import Language.Haskell.TH
@@ -31,6 +33,11 @@ Generates the following smart constructors:
 > _T2 v0 = do
 >     tag0 <- newFieldTag
 >     pure $ T2 (tag0 v0)
+
+Note the form of the data declaration for 'T' above. 'mkConstructors' currently
+only supports "normal" declarations (no records, no type variables etc.), and
+all fields of constructors must be in the expression language (of the form
+@E a@ for some type @a@).
 
 -}
 mkConstructors :: Name -> Q [Dec]

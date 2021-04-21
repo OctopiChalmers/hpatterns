@@ -1,6 +1,11 @@
 {-# LANGUAGE GADTs                   #-}
 {-# LANGUAGE ScopedTypeVariables     #-}
 
+{- | Module defining the deep embedding of the expression language 'E'. Also
+includes functions and types related to the construction of the 'E' AST, such
+as keeping track of internal state and such.
+-}
+
 module E.Core where
 
 import Data.Bits (Bits)

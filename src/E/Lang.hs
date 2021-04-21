@@ -62,7 +62,7 @@ import E.CTypes
 -- * Pattern matching
 --
 
-{- | A @Partition p a@ instance for defines two things:
+{- | A @Partition a p@ instance for defines two things:
 
 * How to construct a value of type @p@ given an input value of type @E a@.
 
@@ -71,7 +71,7 @@ determines when to "choose" that branch/constructor when pattern matching.
 
 These two properties are used in the 'match' combinator to perform matching.
 -}
-class Partition p a where
+class Partition a p where
     {- | Return a list of functions that create matches/branches, one for
     each constructor of the partition type @p@. Each function in the list
     takes an input value of type @E a@ and returns a tuple, where:
@@ -104,9 +104,12 @@ Example, for @'Partition' T Int@:
 >     T1 n   -> n >. 1
 >     T2 t n -> t ||. n >. 100
 -}
-match :: forall p a b . (Partition p a, CType a, CType b)
+match :: forall p a b . (Partition a p, CType a, CType b)
     => E a
+    -- ^ Scrutinee; the value being pattern matched on, after conversion
+    -- according to the 'Partition' instance.
     -> (p -> E b)
+    -- ^ Function to apply to the scrutinee.
     -> Estate (E b)
 match s f = do
     -- Generate a variable name to differentiate this scrutinee from others
@@ -115,7 +118,7 @@ match s f = do
     -- Apply the partitioning on symbolic variables referring to the scrutinee.
     -- When the user pattern matches and uses one of these variables, they
     -- will have the transformation applied by the Partition instance.
-    let branches = map ($ ESym scrutVar) $ partition @p @a
+    let branches = map ($ ESym scrutVar) $ partition @a @p
     taggedBranches <- mapM computeTag branches
 
     pure $ ECase (Scrut s scrutVar) $ map mkMatch taggedBranches
@@ -142,13 +145,13 @@ Example, for @'Partition' T Int@:
 >         T1 _   -> n >. 1
 >         T2 t _ -> t
 -}
-matchM :: forall p a b . (Partition p a, CType a, CType b)
+matchM :: forall p a b . (Partition a p, CType a, CType b)
     => E a
     -> (p -> Estate (E b))
     -> Estate (E b)
 matchM s f = do
     scrutCount <- newScrutId
-    let branches = map ($ ESym scrutCount) $ partition @p @a
+    let branches = map ($ ESym scrutCount) $ partition @a @p
     taggedBranches <- mapM computeTag branches
     ECase (Scrut s scrutCount) <$> mapM mkMatch taggedBranches
   where
