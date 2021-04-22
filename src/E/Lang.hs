@@ -186,7 +186,7 @@ infix 4 ==.
 
 infix 4 /=.
 (/=.) :: (Eq a, CType a) => E a -> E a -> E Bool
-x /=. y = notE (x ==. y)
+(/=.) = ENeq
 
 infixr 3 &&.
 (&&.) :: E Bool -> E Bool -> E Bool

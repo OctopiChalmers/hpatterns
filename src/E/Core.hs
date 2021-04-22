@@ -44,6 +44,7 @@ data E a where
     EGte :: (Num a, CType a) => E a -> E a -> E Bool
     ELte :: (Num a, CType a) => E a -> E a -> E Bool
     EEq  :: (Eq a, CType a) =>  E a -> E a -> E Bool
+    ENeq :: (Eq a, CType a) =>  E a -> E a -> E Bool
     ENot ::                     E Bool -> E Bool
     EAnd ::                     E Bool -> E Bool -> E Bool
     EOr  ::                     E Bool -> E Bool -> E Bool

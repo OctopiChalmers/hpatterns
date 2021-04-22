@@ -220,6 +220,7 @@ ce expr = case expr of
     EGte e1 e2 -> binOp e1 e2 ">="
     ELte e1 e2 -> binOp e1 e2 "<="
     EEq  e1 e2 -> binOp e1 e2 "=="
+    ENeq e1 e2 -> binOp e1 e2 "!="
     EAnd b1 b2 -> binOp b1 b2 "&&"
     EOr  b1 b2 -> binOp b1 b2 "||"
 
