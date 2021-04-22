@@ -493,4 +493,22 @@ bool v0(int arg) {
 ```
 
 The duplicate computations from earlier are gone and the relation to the
-original `E` program is somewhat clearer as well!
+original `E` program is a bit clearer as well!
+
+# TODO
+
+This technique is pretty simple, but there are surely things that can be done
+to improve user ergonomics and performance/readability of the generated code.
+
+* The names of the tags do not indicate which field they are related to. This
+information is available to the TH function, so it shouldn't be too hard to
+generate names that are at least a little bit easier to look at.
+
+* While a single `match` call no longer duplicates the code from the
+`partition` definition, multiple `match` calls still _do_ generate that code
+once each, even if an earlier `match` call already triggered the generation
+of a global variable that could be re-used.
+
+    * A smarter compiler could fix this with the available information. Though,
+    it might be a good idea for further changes to the compiler to implement a
+    separate compilation pass to handle tag referencing business and such.
