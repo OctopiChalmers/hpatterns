@@ -186,7 +186,7 @@ infix 4 ==.
 
 infix 4 /=.
 (/=.) :: (Eq a, CType a) => E a -> E a -> E Bool
-x /=. y = notE (x `EEq` y)
+x /=. y = notE (x ==. y)
 
 infixr 3 &&.
 (&&.) :: E Bool -> E Bool -> E Bool
@@ -230,7 +230,7 @@ fracPartE d = d - floorDoubleE d
 
 -- | @testBitE n v@ returns True if the @n@th bit of the value @v@ is set.
 testBitE :: (Bits a, Num a, CType a) => E Int -> E a -> E Bool
-testBitE n v = bitE n &. v ==. 0
+testBitE n v = bitE n &. v /=. 0
 
 -- | @zeroBitsE@ is a value with all bits clear. Kind of redundant.
 zeroBitsE :: (Bits a, Num a) => E a
