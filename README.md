@@ -189,8 +189,10 @@ transformation is indicated by the `Partition a p` constraint and
 corresponds to the `toSensorData` function from the earlier example.
 
 ```haskell
+{-# LANGUAGE MultiParamTypeClasses #-}
+
 class Partition a p where
-    partition :: [E a -> (E Bool, Estate p)]
+    partition :: [E a -> (E Bool, p)]
 ```
 
 A `Partition a p` instance defines how to transform values from some input
@@ -223,6 +225,10 @@ The following would be a possible definition of a `Partition` instance for
 our example use case:
 
 ```haskell
+{-# LANGUAGE BinaryLiterals        #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NumericUnderscores    #-}
+
 instance Partition Word16 SensorData where
     partition =
         [ \ v -> ( testBitE 15 v
@@ -234,6 +240,8 @@ instance Partition Word16 SensorData where
                  )
         ]
       where
+        -- Language extensions BinaryLiterals and NumericUnderscores enables
+        -- nicer literals for binary values.
         tempMask, humidityMask, errorMask :: E Word16
         tempMask     = 0b0000_0000_1111_1111
         humidityMask = 0b0111_1111_0000_0000
@@ -302,6 +310,187 @@ f x = matchM x $ \case
         A2 t _ -> t
 ```
 
----
+## Lessen duplicate computation
 
-Explain the redundant code issue
+Our `needsWatering` example looks fairly OK at this point, but there exists a
+potential issue related to our technique of pre-applying both `partition` and
+the lambda function on which `match` is applied. The issue manifests when
+fields of constructors are used _multiple times_ in the body of the `match`
+call.
+
+Consider a different (contrived) example, and the generated C code (again,
+edited for clarity):
+
+```haskell
+contrived :: E Int -> Estate (E Bool)
+contrived v = match v $ \case
+    T1 n -> n + n >. n
+    T2   -> valE False
+
+data T = T1 (E Int) | T2
+
+instance Partition Int T where
+    partition =
+        [ \ v -> (v >=. 0, T1 (v * 10 - 2 * 10 - 2))
+        , \ v -> (v <.  0, T2)
+        ]
+```
+```c
+int _scrut1;
+
+bool v0(int arg) {
+    _scrut1 = arg;
+    bool res;
+
+    if (_scrut1 >= 0) {
+        // Duplicate computations!
+        res = (((((_scrut1 * 10) - (2 * 10)) - 2)
+               + (((_scrut1 * 10) - (2 * 10)) - 2))
+               > (((_scrut1 * 10) - (2 * 10)) - 2));
+    } else if (_scrut1 < 0) {
+        res = false;
+    } else {
+        fprintf(stderr, "No match on: `_scrut1`\n");
+        exit(1);
+    }
+
+    return res;
+}
+```
+
+In the body of the `match` call, we only performed two operations, `+` and
+`>.`. Yet, because we reference the expression `n` multiple times, its entire
+definition (as defined by `partition`) shows up multiple times as well! This
+is a problem in several aspects. For one, it clutters the code and
+highlights the lack of a relation between the fields of our constructors and
+corresponding variables in the generated code. More importantly, however, it
+leads to extra, unnecessary computation in the generated code.
+
+What we would like is for each field of our constructors to be assigned to a
+variable in the generated code, so that they can be reused. For this to
+happen, the compiler needs to know when an expression corresponds to a field
+of a constructor, for example by having expressions tagged with some kind of
+dedicated "tag" constructor. Implementing this is a bit tricky though; the
+`match` function itself does not know enough about the type of the value it
+operates on to meaningfully inspect each constructor field, though it might
+be possible through generic programming techniques such as GHC generics or
+similar.
+
+Instead, the simplest way would be to apply a tag constructor `EField` in the
+defintion of `partition`, where the value is constructed:
+
+```haskell
+EField :: ArgId -> E a -> E a
+-- Simplified type of ArgId to demonstrate the idea; the actual type is
+-- slightly different, but conceptually the same.
+type ArgId = String
+```
+```haskell
+instance Partition Int T where
+    partition =
+        [ \ v -> (v >=. 0, T1 (EField "T1_1" (v * 10 - 2 * 10 - 2)))
+        , \ v -> (v <.  0, T2)  -- ^ -- Tag constructor
+        ]
+```
+
+`EField` wraps an expression with a tag, indicating to the compiler that it
+should assign the entire sub-expression to a variable, and use that variable
+in the future if the expression is referenced again. This works, but it has
+the downside of introducing additional boilerplate to the user, which is both
+unergonomic and potentially error-prone, especially so for larger types and
+for constructor with more fields. The `EField` tag only serves its purpose
+internally anyway, so it should be ideally be hidden away from the user.
+
+Here is where we can use _smart constructors_ to hide the tagging of field
+expressions. A smart constructor is a normal function that wraps the
+construction of a value, possibly performing additional work that can be
+hidden away from the user.
+
+With a smart constructor, we could instead implement `partition` like this:
+
+```haskell
+instance Partition Int T where
+    partition =
+        [ \ v -> (v >=. 0, _T1 (v * 10 - 2 * 10 - 2))
+        , \ v -> (v <.  0, T2)
+        ]
+
+-- Smart constructor for constructor T1.
+_T1 :: E Int -> T
+_T1 a = let t1 = EField "T1_1"
+        in T1 (t1 a)
+```
+
+Now the implementation of `partition` is minimally impacted, as we switch
+from writing `T1` to `_T1`. Of course, we now instead have an entire separate
+smart constructor function that needs to be written instead, so we have only
+really moved the problem elsewhere.
+
+Thankfully, these smart constructors follow a pattern, and the smart
+constructor name, type, number of parameters, and number tags to create, can
+all be derived from the type definition of value that it constructs. While
+the tagging would be difficult to do in `match` due to operating on a
+polymorphc type, we _can_ generate our smart constructors using Template
+Haskell.
+
+With this, we can add a single line to our data type declaration to generate
+smart constructors for it:
+
+```haskell
+{-# LANGUAGE TemplateHaskell #-}
+
+data T = T1 (E Int) | T2
+$(mkConstructors ''T)
+
+instance Partition Int T where
+    partition =
+        [ \ v -> (v >=. 0, _T1 (v * 10 - 2 * 10 - 2))
+        , \ v -> (v <.  0, _T2)  -- Not necessary (0 fields) but looks uniform :)
+        ]
+```
+
+As a small detail, the generated code from the TH function is slightly
+different from our hand-written one:
+
+```haskell
+_T1 :: E Int -> Estate T
+_T1 v0 = do
+    tag1 <- newFieldTag
+    pure $ T1 (tag1 a)
+```
+
+`newFieldTag` generates a unique tag name, which will be unique in the entire
+program. This results in the smart constructor having the return type
+`Estate a` instead of simply `a`, which also changes the definition of
+`partition` accordingly:
+
+```haskell
+partition :: [E a -> (E Bool, Estate p)]
+--                            ^^^^^^
+```
+
+Using the smart constructors, our generated code now looks like this instead:
+
+```c
+int _scrut1;
+int _scrut1_field1;
+
+bool v0(int arg) {
+    _scrut1 = arg;
+    bool res;
+    _scrut1_field1 = ((_scrut1 * 10) - (2 * 10)) - 2;
+
+    if (_scrut1 >= 0) {
+        res = (_scrut1_field1 * _scrut1_field1) > _scrut1_field1;
+    } else if (_scrut1 < 0) {
+        res = false;
+    } else {
+        fprintf(stderr, "No match on: `_scrut1`\n");
+        exit(1);
+    }
+    return res;
+}
+```
+
+The duplicate computations from earlier are gone and the relation to the
+original `E` program is somewhat clearer as well!
