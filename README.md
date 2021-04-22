@@ -42,7 +42,7 @@ This section will walk through the hypothetical example use case presented
 in [E.Examples.Watering](src/E/Examples/Watering.hs). The example is chosen
 with the target domain of Haski in mind (IoT-devices).
 
----
+## Input data
 
 An example of a typical smart device is a sensor which can collect data from
 its environment, and send the data to some application which can process it.
@@ -82,6 +82,8 @@ the 1% - 99% range).
 
 * If the control bit is _not_ set, then the sensor is signals an error, and the
 remaining 15 bits represent some sort of error code.
+
+## Writing a program
 
 Now, say we wanted to perform some logic based on the input sensor data. For
 example, we might want a function to return `True` if the soil humidity is
