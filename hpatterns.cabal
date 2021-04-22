@@ -18,6 +18,7 @@ library
     , E.Lang
     , E.TH
 
+    , E.Examples.Contrived
     , E.Examples.Watering
 
   build-depends:
