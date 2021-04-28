@@ -92,8 +92,9 @@ freshCid = do
     pure $ Name newId
 
 showArgId :: ArgId -> String
-showArgId (ArgId scrutId _fid (Just prettyName)) =
-    concat [showScrutId scrutId, "_", prettyName]
+showArgId (ArgId scrutId (FieldId fid) (Just prettyName)) =
+    concat [showScrutId scrutId, "_", show fid, "_", prettyName]
+-- TODO: Make the `show fid` ^above^ not needed, do smarter compilation
 showArgId (ArgId scrutId (FieldId fid) Nothing) =
     concat [showScrutId scrutId, "_field", show fid]
 
