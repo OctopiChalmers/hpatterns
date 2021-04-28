@@ -85,7 +85,7 @@ mkConstructors victim = do
             e <- [e| E.Core.newFieldTag |]
             justStrings <- zipWithM
                 (\ t n ->
-                    [e| Just $(stringE . (++ show n) . nameBase . typeToName $ t)
+                    [e| Just $(stringE . (++ show n) . typeToString $ t)
                     |])
                 types
                 [0 :: Int ..]  -- Need this for constructors with multiple
@@ -122,11 +122,11 @@ mkConstructors victim = do
     err :: String -> a
     err s = error $ "Error in TH function `mkConstructors`: " ++ s
 
-typeToName :: Type -> Name
-typeToName = \case
-    ConT name -> name
+typeToString :: Type -> String
+typeToString = \case
+    ConT name -> nameBase name
+    AppT t1 t2 -> typeToString t1 ++ "_" ++ typeToString t2
     -- ForallT [TyVarBndr] Cxt Type
-    -- AppT Type Type
     -- SigT Type Kind
     -- VarT Name
     -- PromotedT Name
