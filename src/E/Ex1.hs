@@ -16,11 +16,11 @@ import E.Core
 import qualified GHC.Generics as GG (Generic)
 
 
-ex1 :: E Double -> Estate (E Int)
-ex1 v = match @Sig v $ \case
-    SOP    (Z (I n :* Nil)) -> n + 2
-    SOP (S (Z Nil        )) -> 0
-    SOP (S (S _          )) -> error "impossible by construction"
+-- ex1 :: E Double -> Estate (E Int)
+-- ex1 v = match @Sig v $ \case
+--     SOP    (Z (I n :* Nil)) -> n + 2
+--     SOP (S (Z Nil        )) -> 0
+--     SOP (S (S _          )) -> error "impossible by construction"
 
 data Sig = Pos (E Int) | Neg
     deriving (GG.Generic, Generic)

@@ -161,7 +161,7 @@ newCaseDef scrut@(Scrut _scrutExp sName) matches = do
 
     let def = concat
             [ ctype @b, " ", unName fName, "(", ctype @a, " ", argName, ") {\n"
-            , "    ", sName, " = ", argName, ";\n"
+            -- , "    ", sName, " = ", argName, ";\n"
             , "    ", ctype @b, " ", resName, ";\n"
             , concatMap (\ x -> "    " ++ x ++ "\n") ifs
             , "    return ", resName, ";\n"
