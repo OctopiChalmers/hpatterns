@@ -98,32 +98,30 @@ freshId = do
 -- * Pattern matching
 --
 
-class Generic p => Partition p a where
+class Partition p a where
     partition :: [E a -> (E Bool, p)]
 
 match :: forall p a b . (Partition p a, CType a, CType b)
     => E a
-    -> (Rep p -> E b)
+    -> (p -> Estate (E b))
     -> Estate (E b)
 match s f = do
     scrutVar <- freshId
     let branches = map ($ ESym scrutVar) $ partition @p @a
-    pure $ ECase (Scrut s scrutVar) (map mkMatch branches)
-  where
-    mkMatch :: (E Bool, p) -> Match p b
-    mkMatch (cond, p) = Match @p @b cond (f (from p))
+    matches <- mapM (\ (cond, p) -> Match @p cond <$> f p) branches
+    pure $ ECase (Scrut s scrutVar) matches
 
 matchM :: forall p a b . (Partition p a, CType a, CType b)
     => E a
     -> (Rep p -> Estate (E b))
     -> Estate (E b)
-matchM s f = do
-    scrutVar <- freshId
-    let branches = map ($ ESym scrutVar) $ partition @p @a
-    ECase (Scrut s scrutVar) <$> mapM mkMatch branches
-  where
-    mkMatch :: (E Bool, p) -> Estate (Match p b)
-    mkMatch (cond, adt) = Match @p @b cond <$> f (from adt)
+matchM s f = undefined -- do
+--     scrutVar <- freshId
+--     let branches = map ($ ESym scrutVar) $ partition @p @a
+--     ECase (Scrut s scrutVar) <$> mapM mkMatch branches
+--   where
+--     mkMatch :: (E Bool, p) -> Estate (Match p b)
+--     mkMatch (cond, adt) = Match @p @b cond <$> f (from adt)
 
 {- | Partitioning a scrutinee and apply a pattern matching function on the
 partition type.
