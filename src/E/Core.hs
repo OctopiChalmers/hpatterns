@@ -67,11 +67,9 @@ data Scrut a = Scrut (E a) ScrutId
 constructor of a sum type @p@. @p@ is the type pattern matched on, and @b@
 is the return type of the body, i.e. the right hand side of a case-of arrow.
 -}
-data Match p b where
-    Match :: forall p b . CType b
-        => E Bool     -- ^ Predicate for selecting this particular branch
-        -> E b        -- ^ Body of branch; what is returned if chosen.
-        -> Match p b
+data Match p b = CType b => Match
+    (E Bool)  -- ^ Predicate for selecting this particular branch
+    (E b)     -- ^ Body of branch; what is returned if chosen.
 
 -- Helpful instances for 'E' for better ergonomics.
 
