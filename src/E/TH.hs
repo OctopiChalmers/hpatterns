@@ -6,6 +6,7 @@
 
 module E.TH where
 
+import Control.Monad (zipWithM)
 import Language.Haskell.TH
 
 import qualified Data.List as List
@@ -13,7 +14,7 @@ import qualified Data.List as List
 import qualified E.Core
 
 
-{- | Create smart constructors for some partition type.
+{- | Create smart constructors for some partition type. TODO: UPDATE DOCS
 
 For example, for some type T:
 
@@ -82,12 +83,24 @@ mkConstructors victim = do
         genBody :: [Name] -> Q Body
         genBody argNames = do
             e <- [e| E.Core.newFieldTag |]
+            justStrings <- zipWithM
+                (\ t n ->
+                    [e| Just $(stringE . (++ show n) . nameBase . typeToName $ t)
+                    |])
+                types
+                [0 :: Int ..]  -- Need this for constructors with multiple
+                               -- fields of the same type.
+            -- justStrings:
+            -- [Just "Temp0", Just "Humidity1", ...]
+            let bindApps = map (flip BindS . AppE e) justStrings
+
             let tagNames = take (length argNames) (infVarNames "tag")
-            let bindings = map (flip BindS e . VarP) tagNames
+            let bindings = zipWith (\ bind tag -> bind (VarP tag)) bindApps tagNames
             -- bindings:
             -- v0 <- newFieldTag
             -- v1 <- newFieldTag
             -- ...
+
             let conArgs = zipWith (\ t a -> AppE (VarE t) (VarE a)) tagNames argNames
             let construction = List.foldl' AppE (ConE cName) conArgs
             returnStmt <- NoBindS <$> [e| return $(pure construction) |]
@@ -108,3 +121,32 @@ mkConstructors victim = do
 
     err :: String -> a
     err s = error $ "Error in TH function `mkConstructors`: " ++ s
+
+typeToName :: Type -> Name
+typeToName = \case
+    ConT name -> name
+    -- ForallT [TyVarBndr] Cxt Type
+    -- AppT Type Type
+    -- SigT Type Kind
+    -- VarT Name
+    -- PromotedT Name
+    -- TupleT Int
+    -- UnboxedTupleT Int
+    -- ArrowT
+    -- EqualityT
+    -- ListT
+    -- PromotedTupleT Int
+    -- PromotedNilT
+    -- PromotedConsT
+    -- StarT
+    -- ConstraintT
+    -- Constraint
+    -- LitT TyLit
+    t -> err t
+  where
+    err :: Type -> a
+    err t' = error $ concat
+        [ "Error in TH function `typeToString`, unexpected variant of type! "
+        , "If your type is fancy, it might not work so well! "
+        , "\nType: ", show t'
+        ]

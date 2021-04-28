@@ -23,7 +23,6 @@ module E.Compile
     , writeProg
     ) where
 
-import Control.Arrow ((<<<))
 import Control.Monad (when)
 import Data.Functor ((<&>))
 import Data.List (sortOn)
@@ -93,7 +92,9 @@ freshCid = do
     pure $ Name newId
 
 showArgId :: ArgId -> String
-showArgId (ArgId scrutId (FieldId fid)) =
+showArgId (ArgId scrutId _fid (Just prettyName)) =
+    concat [showScrutId scrutId, "_", prettyName]
+showArgId (ArgId scrutId (FieldId fid) Nothing) =
     concat [showScrutId scrutId, "_field", show fid]
 
 showScrutId :: ScrutId -> String
@@ -195,7 +196,7 @@ ce expr = case expr of
     EField argId e -> do
         -- Add the ArgId of the expression we encountered to the current
         -- context, so that the outer 'ECase' construct knows to bind it.
-        modifying (csCtxts <<< _head) (M.insert argId (EC e))
+        modifying (csCtxts . _head) (M.insert argId (EC e))
 
         -- And if it's the first time we made use of this field, we need to
         -- add add a global variable declaration for it.

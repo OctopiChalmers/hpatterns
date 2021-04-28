@@ -99,8 +99,13 @@ newtype FieldId = FieldId Int deriving (Eq, Ord, Show)
 value in a pattern match. The idea is to attach 'ArgId's as tags to the
 expressions representing the constructor fields for partition types. See
 'newFieldTag'.
+
+TODO: UPDATE DOC
 -}
-data ArgId = ArgId ScrutId FieldId
+data ArgId = ArgId
+    ScrutId
+    FieldId
+    (Maybe String)  -- Pretty name
     deriving (Eq, Ord, Show)
 
 {- | Computation state during construction of the program AST. Used to generate
@@ -128,11 +133,11 @@ newScrutId = do
 
 {- | Return a computation for tagging an expression with an identifier.
 This is used on constructor fields to reduce redundant computation in
-the generated C code.
+the generated C code. TODO: UPDATE DOC
 -}
-newFieldTag :: Estate (E a -> E a)
-newFieldTag = do
+newFieldTag :: Maybe String -> Estate (E a -> E a)
+newFieldTag mbyPrettyName = do
     St.modify' (\ st -> st { envFieldCount = envFieldCount st + 1 })
     scrutId <- ScrutId . envScrutCount <$> St.get
     fieldId <- FieldId . envFieldCount <$> St.get
-    pure $ EField (ArgId scrutId fieldId)
+    pure $ EField (ArgId scrutId fieldId mbyPrettyName)
