@@ -47,9 +47,13 @@ mkConstructors victim = do
     genConstructors d
   where
     genConstructors :: Dec -> Q [Dec]
-    genConstructors (DataD [] tName [] _ constructors _) = do
+    genConstructors (NewtypeD [] tName tyVars _ con _) = do
+        fun <- genCon con
+        sig <- genSig tName tyVars con
+        pure [fun, sig]
+    genConstructors (DataD [] tName tyVars _ constructors _) = do
         funs <- mapM genCon constructors
-        sigs <- mapM (genSig (ConT tName)) constructors
+        sigs <- mapM (genSig tName tyVars) constructors
         pure $ funs ++ sigs
     genConstructors _ = err $ concat
         [ "Invalid data declaration for type `", show victim, "`. Currently"
@@ -57,13 +61,23 @@ mkConstructors victim = do
         , " type variables."
         ]
 
-    genSig :: Type -> Con -> Q Dec
-    genSig retType (NormalC cName (map snd -> types)) = do
+    genSig :: Name -> [TyVarBndr] -> Con -> Q Dec
+    genSig retTyName tyVars (NormalC cName (map snd -> conTypes)) = do
         let fName = mkName ('_' : nameBase cName)
-        let retTypeM = AppT (ConT ''E.Core.Estate) retType
-        let typeSig = List.foldr1 (AppT . AppT ArrowT) $ types ++ [retTypeM]
+
+        let tyVarTypes = map (VarT . tyVarName) tyVars
+        let retType = AppT (ConT ''E.Core.Estate) $ if null tyVars
+                then ConT retTyName
+                else List.foldl' AppT (ConT retTyName) tyVarTypes
+
+        let typeSig = List.foldr1 (AppT . AppT ArrowT) $ conTypes ++ [retType]
+
         pure $ SigD fName typeSig
-    genSig _ _ = invalidCon
+      where
+        tyVarName :: TyVarBndr -> Name
+        tyVarName (PlainTV n) = n
+        tyVarName (KindedTV n _) = n
+    genSig _ _ _ = invalidCon
 
     genCon :: Con -> Q Dec
     genCon (NormalC cName (map snd -> types)) = do
@@ -128,7 +142,7 @@ typeToString = \case
     AppT t1 t2 -> typeToString t1 ++ "_" ++ typeToString t2
     -- ForallT [TyVarBndr] Cxt Type
     -- SigT Type Kind
-    -- VarT Name
+    VarT name -> nameBase name
     -- PromotedT Name
     -- TupleT Int
     -- UnboxedTupleT Int
