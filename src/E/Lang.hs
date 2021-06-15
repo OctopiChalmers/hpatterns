@@ -12,6 +12,7 @@ module E.Lang
     (
     -- * Pattern matching
       Partition (..)
+    , enumIdPartitions
     , match
     , matchM
 
@@ -51,6 +52,7 @@ module E.Lang
     ) where
 
 import Data.Bits (Bits)
+import Data.Int (Int8)
 import Data.Proxy (Proxy (..))
 
 import E.Core
@@ -88,6 +90,45 @@ class Partition a p where
     @p@, though this is not enforced.
     -}
     partition :: [E a -> (E Bool, Estate p)]
+
+{- | Helper function for identity instances, for 'FinEnum' types.
+
+Since a 'Partition' instance is necessary to use 'match,
+it was a bit inconvenient for non-"normal" sum types,
+e.g. Int8. The helper function 'enumIdPartitions' acts similar
+to The Trick used in Haski, enumerating through all values of the input
+type of the 'Partition' to generate literal constructor cases.
+
+By implementing 'partition' with this for instances such as
+'Partition Int8 Int8', we can make better use of Haskell features (such as
+guards) when matching on supported values (see below).
+
+For example, when matching on a value of type Int8:
+
+> match n $ \case
+>     0 -> 0
+>     1 -> 99
+>     n | n > 0 -> (-n)
+>       | n < 0 -> n
+-}
+enumIdPartitions :: forall a . (Enum a, Eq a, Bounded a, CType a)
+    => [E a -> (E Bool, Estate a)]
+enumIdPartitions = map build [minBound .. maxBound]
+  where
+    build :: a -> E a -> (E Bool, Estate a)
+    build x = \v -> (v ==. valE x, pure x)
+
+{- Examples of useful Partition instances that make use of 'enumIdPartitions'
+to allow literal pattern matching (and the use of guards etc.)
+
+Note that there is no instance provided for integers of sizes higher than
+8 bits. Larger sizes would work, but the generated code gets huge.
+-}
+instance Partition Bool Bool where
+    partition = enumIdPartitions
+instance Partition Int8 Int8 where
+    partition = enumIdPartitions
+
 
 {- | Partition a scrutinee and apply a pattern matching function on the
 partition type.
