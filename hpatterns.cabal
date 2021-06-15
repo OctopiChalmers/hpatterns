@@ -19,6 +19,7 @@ library
     , E.TH
 
     , E.Examples.Contrived
+    , E.Examples.Litmatch
     , E.Examples.Watering
 
   build-depends:
