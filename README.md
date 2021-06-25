@@ -4,6 +4,10 @@ This repository implements a technique for embedding pattern matching into a
 Haskell EDSL, with the intention of integrating the ideas into the
 [Haski](https://github.com/OctopiChalmers/haski) compiler.
 
+__EDIT (2021-06-25):__ Precise implementation details in this repository may
+differ slightly from that of the Haski compiler. In general though, the
+technique used is the same.
+
 Specifically, a framework is provided that allows the user to:
 
 1. Define how to convert some input type (e.g. `Int`) into a user-defined ADT.
@@ -18,13 +22,31 @@ Example programs can be found in the `src/E/Examples` directory.
 
 ## Building
 
-To build the project, run `cabal build` using a version of `cabal-install`
-2.4 or newer. The `.cabal` file specifies a `base ^>= 4.14.1.0` dependency,
-corresponding to GHC version >= 8.10.2, but things probably work equally well
-with older versions of GHC, so relaxing the requirements should work fine.
+The library can be built with [Stack](https://www.haskellstack.org):
 
-To also generate Haddock documentation for the project as an HTML file, run
-`cabal haddock`.
+```sh
+stack build
+```
+
+To generate documentation:
+
+```sh
+stack haddock
+```
+
+To compile one of the example programs, first run GHCi:
+
+```sh
+stack repl
+```
+
+Then, apply the `printProg` function to an `E` expression:
+
+```sh
+# A dummy argument may need to be provided to the program; the compiled
+# programs don't read arguments.
+GHCi> printProg (needsWatering 0)
+```
 
 # The expression language
 
