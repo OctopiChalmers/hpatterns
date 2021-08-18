@@ -20,6 +20,7 @@ library
 
     , E.Examples.Contrived
     , E.Examples.Litmatch
+    , E.Examples.Nested
     , E.Examples.Watering
 
   build-depends:
