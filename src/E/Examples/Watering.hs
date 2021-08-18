@@ -8,7 +8,7 @@
 {-# LANGUAGE ViewPatterns          #-}
 
 {- | Hypothetical use case demonstrating pattern matching with 'Partition'
-and 'match'/'matchM'.
+and 'caseof'/'caseofM'.
 -}
 
 
@@ -52,7 +52,7 @@ $(mkConstructors ''SensorData)
 
 -- | Hypothetical "do I need to water the plants?"-program.
 needsWatering :: E Word16 -> Estate (E Bool)
-needsWatering x = match x $ \case
+needsWatering x = caseof x $ \case
     Sensor temp humidity -> temp >. 30 ||. humidity <. 25
     Error _errorCode     -> valE False  -- Do something sensible here
 

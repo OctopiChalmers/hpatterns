@@ -10,7 +10,7 @@ import E.Lang
 
 
 contrived :: E Int -> Estate (E Bool)
-contrived v = match v $ \case
+contrived v = caseof v $ \case
     T1 n -> n * n >. n
     T2   -> valE False
 

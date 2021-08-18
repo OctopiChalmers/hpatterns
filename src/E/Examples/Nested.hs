@@ -11,9 +11,9 @@ import E.TH
 
 
 nested :: E Int -> Estate (E Int)
-nested v = matchM v $ \case
+nested v = caseofM v $ \case
     T2   -> pure 98
-    T1 x -> matchM (x + 1000) $ \case
+    T1 x -> caseofM (x + 1000) $ \case
         T2   -> pure 99
         T1 y -> pure (x + 2 + y)
 

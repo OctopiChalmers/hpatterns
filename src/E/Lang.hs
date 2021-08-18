@@ -13,8 +13,8 @@ module E.Lang
     -- * Pattern matching
       Partition (..)
     , enumIdPartitions
-    , match
-    , matchM
+    , caseof
+    , caseofM
 
     -- * Basic operators
     , (>.)
@@ -70,7 +70,7 @@ import E.CTypes
 * For each constructor, a predicate on an input value of type @E a@ that
 determines when to "choose" that branch/constructor when pattern matching.
 
-These two properties are used in the 'match' combinator to perform matching.
+These two properties are used in the 'caseof' combinator to perform matching.
 -}
 class Partition a p where
     {- | Return a list of functions that create matches/branches, one for
@@ -93,7 +93,7 @@ class Partition a p where
 
 {- | Helper function for identity instances, for 'FinEnum' types.
 
-Since a 'Partition' instance is necessary to use 'match,
+Since a 'Partition' instance is necessary to use 'caseof,
 it was a bit inconvenient for non-"normal" sum types,
 e.g. Int8. The helper function 'enumIdPartitions' acts similar
 to The Trick used in Haski, enumerating through all values of the input
@@ -105,7 +105,7 @@ guards) when matching on supported values (see below).
 
 For example, when matching on a value of type Int8:
 
-> match n $ \case
+> caseof n $ \case
 >     0 -> 0
 >     1 -> 99
 >     n | n > 0 -> (-n)
@@ -140,18 +140,18 @@ Example, for @'Partition' T Int@:
 >     | T2 (E Bool) (E Int)
 >
 > ex5 :: E Int -> Estate (E Bool)
-> ex5 x = match x $ \case
+> ex5 x = caseof x $ \case
 >     T1 n   -> n >. 1
 >     T2 t n -> t ||. n >. 100
 -}
-match :: forall p a b . (Partition a p, CType a, CType b)
+caseof :: forall p a b . (Partition a p, CType a, CType b)
     => E a
     -- ^ Scrutinee; the value being pattern matched on, after conversion
     -- according to the 'Partition' instance.
     -> (p -> E b)
     -- ^ Function to apply to the scrutinee.
     -> Estate (E b)
-match s f = do
+caseof s f = do
     -- Generate a variable name to differentiate this scrutinee from others
     -- during compilation.
     scrutVar <- newScrutId
@@ -169,7 +169,7 @@ match s f = do
     mkMatch :: (E Bool, p) -> Match p b
     mkMatch (cond, p) = Match @p @b cond (f p)
 
-{- | Same as match but the pattern matching function is monadic (used
+{- | Same as caseof but the pattern matching function is monadic (used
 for nested matches).
 
 Example, for @'Partition' T Int@:
@@ -179,17 +179,17 @@ Example, for @'Partition' T Int@:
 >     | T2 (E Bool) (E Int)
 >
 > ex5 :: E Int -> Estate (E Bool)
-> ex5 x = matchM x $ \case
+> ex5 x = caseofM x $ \case
 >     T2 b n -> pure $ n ==. n ||. b
->     T1 n   -> match n $ \case
+>     T1 n   -> caseof n $ \case
 >         T1 _   -> n >. 1
 >         T2 t _ -> t
 -}
-matchM :: forall p a b . (Partition a p, CType a, CType b)
+caseofM :: forall p a b . (Partition a p, CType a, CType b)
     => E a
     -> (p -> Estate (E b))
     -> Estate (E b)
-matchM s f = do
+caseofM s f = do
     scrutCount <- newScrutId
     let branches = map ($ ESym scrutCount) $ partition @a @p
     taggedBranches <- mapM computeTag branches

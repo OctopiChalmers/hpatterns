@@ -12,7 +12,7 @@ import E.Lang
 
 
 litmatch :: E Int8 -> Estate (E Int8)
-litmatch n = match n $ valE . \case
+litmatch n = caseof n $ valE . \case
     0 -> 0
     1 -> 1
     x | x > 0     -> -x
