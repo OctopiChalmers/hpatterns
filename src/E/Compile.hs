@@ -275,10 +275,8 @@ newCaseDef (Scrut _scrutExp scrutId) matches = do
     let def = concat
             [ ctype @b, " ", unName fName, "(", ctype @a, " ", argName, ") {\n"
             , "    ", showScrutId scrutId, " = ", argName, ";\n"
-            , "    ", ctype @b, " ", resName, ";\n"
             , concatMap (\ x -> "    " ++ x ++ "\n") bindings
             , concatMap (\ x -> "    " ++ x ++ "\n") ifs
-            , "    return ", resName, ";\n"
             , "}\n"
             ]
     modifying csDefs (def :)
@@ -286,9 +284,6 @@ newCaseDef (Scrut _scrutExp scrutId) matches = do
     pure fName
 
   where
-    resName :: String
-    resName = "res"
-
     argName :: String
     argName = "arg"
 
@@ -312,7 +307,7 @@ newCaseDef (Scrut _scrutExp scrutId) matches = do
             cond' <- ce cond
             body' <- ce body
             pure $ concat
-                ["if (", cond', ") { ", resName, " = ", body', "; } else "]
+                ["if (", cond', ") { return ", body', "; } else "]
 
 {- | Add a global variable to the compilation state, for holding the value
 of a constructor field.
